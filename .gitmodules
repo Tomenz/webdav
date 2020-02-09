@@ -4,6 +4,10 @@
 [submodule "SocketLib"]
 	path = SocketLib
 	url = https://github.com/Tomenz/SocketLib
+	ignore = untracked
 [submodule "tinyxml2"]
 	path = tinyxml2
 	url = https://github.com/leethomason/tinyxml2.git
+[submodule "md5"]
+	path = md5
+	url = https://github.com/jianjieluo/md5.git
