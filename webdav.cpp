@@ -22,6 +22,7 @@ namespace fs = std::experimental::filesystem;
 
 #include "tinyxml2/tinyxml2.h"
 #include "FastCgi/FastCgi.h"
+#include "md5/md5.h"
 
 using namespace std;
 using namespace tinyxml2;
@@ -122,18 +123,14 @@ void OutputDebugStringA(const char* pOut)
 #ifdef _DEBUG
 #ifdef _WIN64
 #pragma comment(lib, "x64/Debug/socketlib64d")
-#pragma comment(lib, "x64/Debug/CommonLib")
 #else
 #pragma comment(lib, "Debug/socketlib32d")
-#pragma comment(lib, "Debug/CommonLib")
 #endif
 #else
 #ifdef _WIN64
 #pragma comment(lib, "x64/Release/socketlib64")
-#pragma comment(lib, "x64/Release/CommonLib")
 #else
 #pragma comment(lib, "Release/socketlib32")
-#pragma comment(lib, "Release/CommonLib")
 #endif
 #endif
 #endif
@@ -387,11 +384,7 @@ OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() 
 //                vPropertys.emplace_back("D:getcontentlength", to_wstring(fs::file_size(pItem, ec)));
                 vPropertys.emplace_back("D:getcontentlength", to_wstring(stFileInfo.st_size));
                 // Calc ETag
-                string strToHash = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(pItem.wstring()) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size);
-                md5::md5_t HashValue(strToHash.c_str(), strToHash.size());
-                strToHash.reserve(33);
-                HashValue.get_string(&strToHash[0]);
-                wstring strEtag = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(strToHash.substr(0, 32));
+                wstring strEtag = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(pItem.wstring()) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
                 vPropertys.emplace_back("D:getetag", strEtag);
             }
             vPropertys.emplace_back("D:displayname", strFName.empty() == true ? L"/" : strFName);
@@ -896,7 +889,7 @@ OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
             {
 				stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
-                string strEtag = md5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size));
+                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
 
 				//vHeaderList.push_back(make_pair("Content-Type", strMineType));
 				vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
@@ -942,7 +935,7 @@ OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
 			{
 				stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
-                string strEtag = md5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size));
+                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
 
 				//vHeaderList.push_back(make_pair("Content-Type", strMineType));
 				vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
