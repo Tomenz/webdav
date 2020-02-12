@@ -78,6 +78,7 @@ using namespace tinyxml2;
 #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
 #else
 //#include <sys/types.h>
+#include <termios.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <utime.h>
@@ -97,26 +98,33 @@ using namespace tinyxml2;
 #define _S_IFDIR S_IFDIR
 #define _S_IFREG S_IFREG
 #define FN_STR(x) wstring_convert<codecvt_utf8<wchar_t>, wchar_t>().to_bytes(x)
-void OutputDebugString(const wchar_t* pOut)
-{   // mkfifo /tmp/dbgout  ->  tail -f /tmp/dbgout
-    int fdPipe = open("/tmp/dbgout", O_WRONLY | O_NONBLOCK);
-    if (fdPipe >= 0)
+extern void OutputDebugString(const wchar_t* pOut);
+extern void OutputDebugStringA(const char* pOut);
+auto _kbhit = []() -> int
+{
+    struct termios oldt, newt;
+    int ch;
+    int oldf;
+
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
+
+    ch = getchar();
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    fcntl(STDIN_FILENO, F_SETFL, oldf);
+
+    if (ch != EOF)
     {
-        wstring strTmp(pOut);
-        write(fdPipe, ConvertToByte(strTmp).c_str(), strTmp.size());
-        close(fdPipe);
+        ungetc(ch, stdin);
+        return 1;
     }
-}
-void OutputDebugStringA(const char* pOut)
-{   // mkfifo /tmp/dbgout  ->  tail -f /tmp/dbgout
-    int fdPipe = open("/tmp/dbgout", O_WRONLY | O_NONBLOCK);
-    if (fdPipe >= 0)
-    {
-        string strTmp(pOut);
-        write(fdPipe, strTmp.c_str(), strTmp.size());
-        close(fdPipe);
-    }
-}
+    return 0;
+};
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -133,10 +141,9 @@ void OutputDebugStringA(const char* pOut)
 #pragma comment(lib, "Release/socketlib32")
 #endif
 #endif
-#endif
-
 #pragma comment(lib, "libcrypto.lib")
 #pragma comment(lib, "libssl.lib")
+#endif
 
 const static unordered_map<wstring, int> arMethoden = { { L"PROPFIND", 0 },{ L"PROPPATCH", 1 },{ L"MKCOL", 2 },{ L"COPY", 3 },{ L"MOVE", 4 },{ L"DELETE", 5 },{ L"LOCK", 6 },{ L"UNLOCK", 7 },{ L"PUT", 8 },{ L"OPTIONS", 9 },{ L"GET", 10 }, { L"HEAD", 11 } };
 
@@ -395,7 +402,7 @@ OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() 
             vPropertys.emplace_back("D:getlastmodified", ss.str());
 
             in_time_t = stFileInfo.st_ctime;
-            ss.swap(wstringstream());
+            wstringstream().swap(ss);
             ss << put_time(::gmtime(&in_time_t), L"%a, %d %b %Y %H:%M:%S GMT");  // "Thu, 08 Dec 2016 10:20:54 GMT"
             vPropertys.emplace_back("D:creationdate", ss.str());
 
