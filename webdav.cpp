@@ -489,7 +489,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             else
             {
                 fs::path pFile(strRootPath + strPath);
-                if (fs::exists(pFile) == true)
+                if (fs::exists(pFile, ec) == true && ec == error_code())
                 {
                     vector<pair<string, wstring>> vPropertys;
                     fnGetPathProp(pFile, vPropertys);
@@ -648,7 +648,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
         case 2: // MKCOL
             iStatus = 403;
-            if (fs::create_directory(strRootPath + strPath) == true)
+            if (fs::create_directory(strRootPath + strPath, ec) == true && ec == error_code())
                 iStatus = 201;
             break;
 
@@ -671,7 +671,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
                         error_code ec;
                         fs::copy(src, dst, fs::copy_options::overwrite_existing|fs::copy_options::recursive, ec);
-                        if (ec.value() == 0)
+                        if (ec == error_code())
                             iStatus = 201;
                         else
                             OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" copy from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
@@ -700,15 +700,13 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                         fs::path dst(strRootPath + strDst);
 OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
 
-                        error_code ec;
                         fs::rename(src, dst, ec);
-//#if defined(_WIN32) || defined(_WIN64)
-                        if (ec.value() == 0)
+                        if (ec == error_code())
                             iStatus = 201;
                         else
+                        {
                             OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
-//                            OutputDebugStringA(string(ec.message() + "\r\n").c_str());
-//#endif
+                        }
                     }
                     return true;
                 }
@@ -723,9 +721,7 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
                 iStatus = 204;
             else
             {
-//#if defined(_WIN32) || defined(_WIN64)
                 OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing path\r\n").c_str());
-//#endif
             }
             break;
 
