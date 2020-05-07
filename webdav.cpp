@@ -248,7 +248,7 @@ tuple<size_t, size_t, size_t> FindRedirectMarker(wstring strA, wstring strB)
                 nEndA = 1 + tokenA[m].size();
                 nEndB = 1 + tokenB[m].size();
             }
-            return make_tuple(nStrt, -1, -1);
+            return make_tuple(nStrt, nEndA, nEndB);
         }
         nStrt += 1 + tokenA[n].size();
     }
@@ -317,7 +317,8 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         wstring strHost;
         find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"HTTP_HOST") ? strHost = pr.second, true : false;  });
         wstring strPath;
-        find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"PATH_INFO") ? strPath = url_decode(ConvertToByte(pr.second)), true : false;  });
+        if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"PATH_INFO") ? strPath = url_decode(ConvertToByte(pr.second)), true : false;  }) != end(mapEnvList))
+            OutputDebugString(wstring(L"PATH_INFO = " + strPath + L"\r\n").c_str());
         wstring strRootPath;
         find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"DOCUMENT_ROOT") ? strRootPath = pr.second, true : false;  });
         find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"DAV_ROOT") ? strRootPath = pr.second, true : false;  });
@@ -327,7 +328,8 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"HTTPS") ? strHttp += "s", true : false;  });
 
         if (strPath.empty() == true)    // Kommt vor, wenn über FastCgi aufgerufen wird
-            find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"SCRIPT_FILENAME") ? strPath = url_decode(ConvertToByte(pr.second)), true : false;  });
+            if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"SCRIPT_FILENAME") ? strPath = url_decode(ConvertToByte(pr.second)), true : false;  }) != end(mapEnvList))
+                OutputDebugString(wstring(L"SCRIPT_FILENAME = " + strPath + L"\r\n").c_str());
 
         tuple<size_t, size_t, size_t> nDiff = FindRedirectMarker(strRequestUri, strPath);
         // Sollte die RequestURI <> dem Pfad sein ist wahrscheinlich ein Redirect Marker am Anfang
@@ -482,7 +484,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 }
 
                 iStatus = 207;
-                vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=\"utf-8\""));
+                vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
                 //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
                 doc.Print(&streamer);
             }
@@ -502,7 +504,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
                     fnBuildRespons(element, strRequestUri, false, vPropertys);
                     iStatus = 207;
-                    vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=\"utf-8\""));
+                    vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
                     //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
                     doc.Print(&streamer);
                 }
@@ -641,7 +643,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
         }
         iStatus = 207;
-        vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=\"utf-8\""));
+        vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
         //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
         doc.Print(&streamer);
         break;
@@ -650,6 +652,8 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             iStatus = 403;
             if (fs::create_directory(strRootPath + strPath, ec) == true && ec == error_code())
                 iStatus = 201;
+            else
+                OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" create directory: " + strRootPath + strPath + L"\r\n").c_str());
             break;
 
         case 3: // COPY
@@ -664,7 +668,8 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     {
                         fs::path src(wstring(strRootPath + strPath));
                         wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
-                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+//                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
 
                         //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
                         fs::path dst(strRootPath + strDst);
@@ -694,7 +699,9 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     {
                         fs::path src(wstring(strRootPath + strPath));
                         wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
-                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+                        //strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strDst.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+//strDst.replace(get<0>(nDiff), -1, strDst.substr(get<0>(nDiff) + get<1>(nDiff)));
+strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
 
                         //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
                         fs::path dst(strRootPath + strDst);
@@ -716,8 +723,8 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
         case 5: // DELETE
             iStatus = 404;  // Forbidden
-//            if (fs::remove_all(fs::path(strRootPath + strPath), ec) >= 0)
-            if (_wremove(FN_STR(wstring(strRootPath + strPath)).c_str()) == 0)
+            if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
+//            if (_wremove(FN_STR(wstring(strRootPath + strPath)).c_str()) == 0)
                 iStatus = 204;
             else
             {
@@ -825,7 +832,7 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
             iStatus = 200;
             vHeaderList.push_back(make_pair("Lock-Token", to_string(nNextLockToken)));
-            vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=\"utf-8\""));
+            vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
             //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
             xmlOut.Print(&streamer);
         }
@@ -848,15 +855,14 @@ OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r
                         copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(fout));
 
                     fout.close();
-OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
+//OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
+                    iStatus = 201;
+                    //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
+                    vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
+                    //vHeaderList.push_back(make_pair("Content-Length", "0"));
                 }
                 else
-                    OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
-
-                iStatus = 201;
-                //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
-                vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
-                //vHeaderList.push_back(make_pair("Content-Length", "0"));
+                    OutputDebugString(wstring(L"PUT: Error opening destination file\r\n").c_str());
             }
             else if (nContentSize == 0)
             {
@@ -864,14 +870,14 @@ OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
                 if (fout.is_open() == true)
                 {
                     fout.close();
-OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
+//OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
+                    iStatus = 201;
+                    //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
+                    vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
+                    //vHeaderList.push_back(make_pair("Content-Length", "0"));
                 }
                 else
-                    OutputDebugString(wstring(L"PUT Datei nicht geoeffnet\r\n").c_str());
-                iStatus = 201;
-                //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
-                vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
-                //vHeaderList.push_back(make_pair("Content-Length", "0"));
+                    OutputDebugString(wstring(L"PUT: Error opening destination file\r\n").c_str());
             }
         }
         break;
