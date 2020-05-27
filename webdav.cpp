@@ -1006,7 +1006,7 @@ OutputDebugStringA(streamer.CStr()); OutputDebugStringA("\r\n");
 //#endif
         }
 //OutputDebugStringA("--------------------\n");
-        return 1;
+        return 0;
     }
     else
     {
