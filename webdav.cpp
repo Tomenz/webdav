@@ -298,7 +298,7 @@ void XmlIterate(const XMLElement* elm, tree<string, string>& treeXml, deque<pair
 
 int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvList, ostream& streamOut, istream& streamIn)
 {
-    vector<pair<string, string>> vHeaderList = { { make_pair("X-Powerd-By", "webdav-cgi/0.1"), make_pair("DAV", "1,2") } };
+    vector<pair<string, string>> vHeaderList = { { make_pair("X-Powerd-By", "webdav-cgi/0.1"), make_pair("DAV", "1,2"), make_pair("MS-Author-Via", "DAV") } };
 
     unordered_map<wstring, int>::const_iterator itMethode;
     if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"REQUEST_METHOD" && (itMethode = arMethoden.find(pr.second)) != end(arMethoden)) ? true : false;  }) != end(mapEnvList))
@@ -339,18 +339,22 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 
         auto fnBuildRespons = [&](XMLNode* parent, const wstring& strRef, bool bIsCollection, vector<pair<string, wstring>> vPrItems)
         {
-            parent = parent->InsertEndChild(doc.NewElement("D:response"));
-            XMLElement* newEle = doc.NewElement("D:href");
+            XMLElement* respons = doc.NewElement("D:response");
+            respons->SetAttribute("xmlns:lp1", "DAV:");
+            parent->InsertEndChild(respons);
+
+            XMLElement* href = doc.NewElement("D:href");
             //newEle->SetText(string("http://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost) + strRef).c_str());
-            newEle->SetText(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRef).c_str());
+            href->SetText(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRef).c_str());
 
-            parent->InsertEndChild(newEle);
-            parent = parent->InsertEndChild(doc.NewElement("D:propstat"));
+            respons->InsertEndChild(href);
+            XMLNode* propstat = respons->InsertEndChild(doc.NewElement("D:propstat"));
 
-            XMLNode* node = parent->InsertEndChild(doc.NewElement("D:prop"));
+            XMLNode* prop = propstat->InsertEndChild(doc.NewElement("D:prop"));
 
-            XMLElement* ResType = doc.NewElement("D:resourcetype");
-            node->InsertEndChild(ResType);
+            XMLElement* ResType = doc.NewElement("lp1:resourcetype");
+            prop->InsertEndChild(ResType);
+
             if (bIsCollection == true)
             {
                 XMLElement* Col = doc.NewElement("D:collection");
@@ -359,15 +363,32 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 
             for (auto& prItem : vPrItems)
             {
-                newEle = doc.NewElement(prItem.first.c_str());
+                XMLElement* newEle = doc.NewElement(prItem.first.c_str());
                 if (prItem.second.empty() == false)
                     newEle->SetText(ConvertToByte(prItem.second).c_str());
-                node->InsertEndChild(newEle);
+                prop->InsertEndChild(newEle);
             }
 
-            newEle = doc.NewElement("D:status");
-            newEle->SetText("HTTP/1.1 200 OK");
-            parent->InsertEndChild(newEle);
+            XMLElement* supportedlock = doc.NewElement("D:supportedlock");
+            prop->InsertEndChild(supportedlock);
+
+            XMLElement* lockentry = doc.NewElement("D:lockentry");
+            supportedlock->InsertEndChild(lockentry);
+
+            lockentry->InsertEndChild(doc.NewElement("D:lockscope"))->InsertEndChild(doc.NewElement("D:exclusive"));
+            lockentry->InsertEndChild(doc.NewElement("D:locktype"))->InsertEndChild(doc.NewElement("D:write"));
+
+            lockentry = doc.NewElement("D:lockentry");
+            supportedlock->InsertEndChild(lockentry);
+
+            lockentry->InsertEndChild(doc.NewElement("D:lockscope"))->InsertEndChild(doc.NewElement("D:shared"));
+            lockentry->InsertEndChild(doc.NewElement("D:locktype"))->InsertEndChild(doc.NewElement("D:write"));
+
+            prop->InsertEndChild(doc.NewElement("D:lockdiscovery"));
+
+            XMLElement* status = doc.NewElement("D:status");
+            status->SetText("HTTP/1.1 200 OK");
+            propstat->InsertEndChild(status);
         };
 
         auto fnGetPathProp = [&](fs::path pItem, vector<pair<string, wstring>>& vPropertys) -> wstring
@@ -381,7 +402,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
             if (S_ISDIR(stFileInfo.st_mode))
             {
 #if defined(_WIN32) || defined(_WIN64)
-OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() + L"\r\n").c_str());
+//OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() + L"\r\n").c_str());
 #endif
                 if (strFName == L".")
                     strFName = strPath;// strFName.clear();
@@ -391,22 +412,22 @@ OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() 
             else
             {
 //                vPropertys.emplace_back("D:getcontentlength", to_wstring(fs::file_size(pItem, ec)));
-                vPropertys.emplace_back("D:getcontentlength", to_wstring(stFileInfo.st_size));
+                vPropertys.emplace_back("lp1:getcontentlength", to_wstring(stFileInfo.st_size));
                 // Calc ETag
                 wstring strEtag = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(pItem.wstring()) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
-                vPropertys.emplace_back("D:getetag", strEtag);
+                vPropertys.emplace_back("lp1:getetag", strEtag);
             }
-            vPropertys.emplace_back("D:displayname", strFName.empty() == true ? L"/" : strFName);
+//            vPropertys.emplace_back("lp1:displayname", strFName.empty() == true ? L"/" : strFName);
 //            auto in_time_t = chrono::system_clock::to_time_t(fs::last_write_time(pItem, ec));
             auto in_time_t = stFileInfo.st_mtime;
             wstringstream ss;
             ss << put_time(::gmtime(&in_time_t), L"%a, %d %b %Y %H:%M:%S GMT");  // "Thu, 08 Dec 2016 10:20:54 GMT"
-            vPropertys.emplace_back("D:getlastmodified", ss.str());
+            vPropertys.emplace_back("lp1:getlastmodified", ss.str());
 
             in_time_t = stFileInfo.st_ctime;
             wstringstream().swap(ss);
             ss << put_time(::gmtime(&in_time_t), L"%a, %d %b %Y %H:%M:%S GMT");  // "Thu, 08 Dec 2016 10:20:54 GMT"
-            vPropertys.emplace_back("D:creationdate", ss.str());
+            vPropertys.emplace_back("lp1:creationdate", ss.str());
 
             if (strPath == strFName)
                 strFName.clear();
@@ -420,7 +441,7 @@ OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() 
         // https://msdn.microsoft.com/en-us/library/ms991960(v=exchg.65).aspx
         // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
         tree<string, string> treeXml;
-OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second) + L") -> " + strRootPath + strPath + L"\r\n").c_str());
+OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second) + L") -> " + strRootPath + L"|" + strPath + L"\r\n").c_str());
         switch (itMethode->second)
         {
         case 0: // PROPFIND
@@ -439,7 +460,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     for (auto it : treeXml.front())
                     {
 #if defined(_WIN32) || defined(_WIN64)
-                        OutputDebugStringA(string("Element: " + it.Element + "\r\n").c_str());
+//                        OutputDebugStringA(string("Element: " + it.Element + "\r\n").c_str());
 #endif
                     }
                 }
@@ -518,9 +539,8 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
         case 1: // PROPPATCH
         {
-            newEle->SetAttribute("xmlns:Z", "urn:schemas-microsoft-com:");
-
             XMLElement* pElemResp = doc.NewElement("D:response");
+            pElemResp->SetAttribute("xmlns:Z", "urn:schemas-microsoft-com:");
             element->InsertEndChild(pElemResp);
             XMLElement* pElemHRef = doc.NewElement("D:href");
             //pElemHRef->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath)).c_str());
@@ -594,7 +614,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                         for (auto itProp : itSet)
                         {
 #if defined(_WIN32) || defined(_WIN64)
-                            OutputDebugStringA(string("Element: " + itProp.Element + ", Value: " + itProp.Value + "\r\n").c_str());
+//                            OutputDebugStringA(string("Element: " + itProp.Element + ", Value: " + itProp.Value + "\r\n").c_str());
 #endif
                         }
                     }
@@ -699,8 +719,8 @@ strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
                     {
                         fs::path src(wstring(strRootPath + strPath));
                         wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
-                        //strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strDst.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
-//strDst.replace(get<0>(nDiff), -1, strDst.substr(get<0>(nDiff) + get<1>(nDiff)));
+//                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+//OutputDebugString(wstring(L"redirect markers 1: " + to_wstring(get<0>(nDiff)) + L" 2: " + to_wstring(get<1>(nDiff))));
 strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
 
                         //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
@@ -723,7 +743,14 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
         case 5: // DELETE
             iStatus = 404;  // Forbidden
-            if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
+            if (fs::is_regular_file(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+            {
+                if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+                    iStatus = 204;
+                else
+                    OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing file\r\n").c_str());
+            }
+            else if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
 //            if (_wremove(FN_STR(wstring(strRootPath + strPath)).c_str()) == 0)
                 iStatus = 204;
             else
@@ -735,9 +762,30 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
         case 6: // LOCK
         {
 //this_thread::sleep_for(chrono::milliseconds(30000));
+            string strOwner("unknown");
+            tinyxml2::XMLDocument xmlIn;
+            if (nContentSize > 0)
+            {
+                stringstream ss;
+                copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                xmlIn.Parse(ss.str().c_str(), ss.str().size());
+                XmlIterate(xmlIn.RootElement(), treeXml);
+            }
+
+            XMLElement* pElement = xmlIn.FirstChildElement("D:lockinfo");
+            if (pElement != nullptr)
+            {
+                pElement = pElement->FirstChildElement("D:owner");
+                if (pElement != nullptr)
+                {
+                    pElement = pElement->FirstChildElement("D:href");
+                    if (pElement != nullptr)
+                        strOwner = pElement->GetText();
+                }
+            }
+
             uint64_t nNextLockToken = 1000;
             int fd = _wopen(FN_STR((strModulePath + L"/.davlock")).c_str(), O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
-
             //fstream fin(FN_STR(strModulePath + L"/.davlock"), ios::in | ios::binary);
             //if (fin.is_open() == true)
             if (fd != -1)
@@ -819,16 +867,20 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
             XMLElement* owner = xmlOut.NewElement("D:owner");
             actLock->InsertEndChild(owner);
             XMLElement* href = xmlOut.NewElement("D:href");
-            href->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strPath)).c_str());
+            href->SetText(strOwner.c_str());
             owner->InsertEndChild(href);
+
+            XMLElement* timeout = xmlOut.NewElement("D:timeout");
+            timeout->SetText("Second-3600");
+            actLock->InsertEndChild(timeout);
 
             XMLElement* lockTock = xmlOut.NewElement("D:locktoken");
             actLock->InsertEndChild(lockTock);
-            XMLElement* lockRoot = xmlOut.NewElement("D:lockroot");
-            lockTock->InsertEndChild(lockRoot);
+            //XMLElement* lockRoot = xmlOut.NewElement("D:lockroot");
+            //lockTock->InsertEndChild(lockRoot);
             href = xmlOut.NewElement("D:href");
             href->SetText(to_string(nNextLockToken).c_str());
-            lockRoot->InsertEndChild(href);
+            lockTock->InsertEndChild(href);//lockRoot->InsertEndChild(href);
 
             iStatus = 200;
             vHeaderList.push_back(make_pair("Lock-Token", to_string(nNextLockToken)));
@@ -845,7 +897,7 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
         case 8: // PUT
         {
             iStatus = 403;  // Forbidden
-OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r\n").c_str());
+//OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r\n").c_str());
             if (nContentSize > 0)
             {
                 fstream fout(FN_STR(strRootPath + strPath), ios::out | ios::binary);
@@ -892,18 +944,18 @@ OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r
         {
             iStatus = 200;
 
-			int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
-			fstream fin(FN_STR(strRootPath + strPath), ios::in | ios::binary);
+            int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            fstream fin(FN_STR(strRootPath + strPath), ios::in | ios::binary);
             if (iRet == 0 && fin.is_open() == true)
             {
-				stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
+                stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
                 string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
 
-				//vHeaderList.push_back(make_pair("Content-Type", strMineType));
-				vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
-				//vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
-				vHeaderList.push_back(make_pair("ETag", strEtag));
+                //vHeaderList.push_back(make_pair("Content-Type", strMineType));
+                vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
+                //vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
+                vHeaderList.push_back(make_pair("ETag", strEtag));
                 vHeaderList.push_back(make_pair("Content-Length", to_string(stFileInfo.st_size)));
 
                 string strHeader;
@@ -929,27 +981,27 @@ OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r
             }
             else
             {
-				iStatus = 404;
-				if(fin.is_open() == true)
-					fin.close();
-			}
+                iStatus = 404;
+                if(fin.is_open() == true)
+                    fin.close();
+            }
         }
         break;
 
-		case 11:// HEAD
-		{
+        case 11:// HEAD
+        {
             iStatus = 200;
-			int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
-			if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
-			{
-				stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
+            int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
+            {
+                stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
                 string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
 
-				//vHeaderList.push_back(make_pair("Content-Type", strMineType));
-				vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
-				//vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
-				vHeaderList.push_back(make_pair("ETag", strEtag));
+                //vHeaderList.push_back(make_pair("Content-Type", strMineType));
+                vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
+                //vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
+                vHeaderList.push_back(make_pair("ETag", strEtag));
 
 /*                string strHeader;
                 for (const auto& itItem : vHeaderList)
@@ -960,14 +1012,15 @@ OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r
                 streamOut.flush();
 
                 vHeaderList.clear();*/
-			}
+            }
             else
                 iStatus = 404;
-		}
-		break;
+        }
+        break;
 
         default:
             iStatus = 412;
+            OutputDebugString(L"Unknown methode\r\n");
         }
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -993,7 +1046,7 @@ OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r
                 strHeader += itItem.first + ": " + itItem.second + "\r\n";
             strHeader += "\r\n";
 //#if defined(_WIN32) || defined(_WIN64)
-OutputDebugStringA(strHeader.c_str());
+//OutputDebugStringA(strHeader.c_str());
 //#endif
             streamOut << strHeader;
         }
@@ -1002,16 +1055,16 @@ OutputDebugStringA(strHeader.c_str());
         {
             streamOut << streamer.CStr();
 //#if defined(_WIN32) || defined(_WIN64)
-OutputDebugStringA(streamer.CStr()); OutputDebugStringA("\r\n");
+//OutputDebugStringA(streamer.CStr()); OutputDebugStringA("\r\n");
 //#endif
         }
 //OutputDebugStringA("--------------------\n");
-        return 0;
+        return 1;
     }
     else
     {
 //#if defined(_WIN32) || defined(_WIN64)
-		auto itMeth = mapEnvList.find(L"REQUEST_METHOD");
+        auto itMeth = mapEnvList.find(L"REQUEST_METHOD");
         OutputDebugString(wstring(L"Unknown method called" + (itMeth == end(mapEnvList) ? wstring() : itMeth->second) + L"\r\n").c_str());
 //#endif
         vHeaderList.push_back(make_pair("status", to_string(400)));
