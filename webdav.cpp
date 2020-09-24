@@ -16,9 +16,11 @@
 #include <thread>
 #include <fcntl.h>
 
-#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
-#include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
+//#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+//#include <experimental/filesystem>
+#include <filesystem>
+//namespace fs = std::experimental::filesystem;
+namespace fs = std::filesystem;
 
 #include "tinyxml2/tinyxml2.h"
 #include "FastCgi/FastCgi.h"
@@ -126,7 +128,7 @@ auto _kbhit = []() -> int
     return 0;
 };
 #endif
-
+/*
 #if defined(_WIN32) || defined(_WIN64)
 #ifdef _DEBUG
 #ifdef _WIN64
@@ -144,7 +146,7 @@ auto _kbhit = []() -> int
 #pragma comment(lib, "libcrypto.lib")
 #pragma comment(lib, "libssl.lib")
 #endif
-
+*/
 const static unordered_map<wstring, int> arMethoden = { { L"PROPFIND", 0 },{ L"PROPPATCH", 1 },{ L"MKCOL", 2 },{ L"COPY", 3 },{ L"MOVE", 4 },{ L"DELETE", 5 },{ L"LOCK", 6 },{ L"UNLOCK", 7 },{ L"PUT", 8 },{ L"OPTIONS", 9 },{ L"GET", 10 }, { L"HEAD", 11 } };
 
 template<class A, class B>
@@ -743,19 +745,22 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
         case 5: // DELETE
             iStatus = 404;  // Forbidden
-            if (fs::is_regular_file(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+            _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            if (S_ISDIR(stFileInfo.st_mode))
+            {
+                if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
+                    iStatus = 204;
+                else if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+                    iStatus = 204;
+                else
+                    OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing path\r\n").c_str());
+            }
+            else
             {
                 if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
                     iStatus = 204;
                 else
                     OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing file\r\n").c_str());
-            }
-            else if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
-//            if (_wremove(FN_STR(wstring(strRootPath + strPath)).c_str()) == 0)
-                iStatus = 204;
-            else
-            {
-                OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing path\r\n").c_str());
             }
             break;
 
