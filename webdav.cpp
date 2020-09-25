@@ -16,11 +16,14 @@
 #include <thread>
 #include <fcntl.h>
 
-//#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
-//#include <experimental/filesystem>
+#if defined(_WIN32) || defined(_WIN64)
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#else
 #include <filesystem>
-//namespace fs = std::experimental::filesystem;
 namespace fs = std::filesystem;
+#endif
 
 #include "tinyxml2/tinyxml2.h"
 #include "FastCgi/FastCgi.h"
@@ -128,25 +131,7 @@ auto _kbhit = []() -> int
     return 0;
 };
 #endif
-/*
-#if defined(_WIN32) || defined(_WIN64)
-#ifdef _DEBUG
-#ifdef _WIN64
-#pragma comment(lib, "x64/Debug/socketlib64d")
-#else
-#pragma comment(lib, "Debug/socketlib32d")
-#endif
-#else
-#ifdef _WIN64
-#pragma comment(lib, "x64/Release/socketlib64")
-#else
-#pragma comment(lib, "Release/socketlib32")
-#endif
-#endif
-#pragma comment(lib, "libcrypto.lib")
-#pragma comment(lib, "libssl.lib")
-#endif
-*/
+
 const static unordered_map<wstring, int> arMethoden = { { L"PROPFIND", 0 },{ L"PROPPATCH", 1 },{ L"MKCOL", 2 },{ L"COPY", 3 },{ L"MOVE", 4 },{ L"DELETE", 5 },{ L"LOCK", 6 },{ L"UNLOCK", 7 },{ L"PUT", 8 },{ L"OPTIONS", 9 },{ L"GET", 10 }, { L"HEAD", 11 } };
 
 template<class A, class B>

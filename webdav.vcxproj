@@ -116,7 +116,8 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(SolutionDir)$(TargetName)$(TargetExt)</OutputFile>
-      <AdditionalLibraryDirectories>$(SolutionDir);$(SolutionDir)/socketlib;$(OpenSSL_Home)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OutDir);$(OpenSSL_Home)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>socketlib64d.lib;libcrypto.lib;libssl.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -162,7 +163,8 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(SolutionDir)$(TargetName)$(TargetExt)</OutputFile>
-      <AdditionalLibraryDirectories>$(SolutionDir);$(SolutionDir)/socketlib;$(OpenSSL_Home)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OutDir);$(OpenSSL_Home)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>socketlib64.lib;libcrypto.lib;libssl.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
