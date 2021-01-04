@@ -1,1 +1,13 @@
 /build/*
+/out/*
+/.vs/*
+webdav.exe
+*.user
+*.bak
+*.obj
+*.lib
+*.pdb
+*.tlog
+*.log
+*.idb
+*.ilk
