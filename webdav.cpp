@@ -1,5 +1,9 @@
-// webdav.cpp : Definiert die exportierten Funktionen für die DLL-Anwendung.
+// webdav.cpp : Definiert die exportierten Funktionen fÃ¼r die DLL-Anwendung.
 //
+// https://www.windowspage.de/tipps/022703.html
+// https://help.dreamhost.com/hc/en-us/articles/216473357-Accessing-WebDAV-with-Windows
+// https://support.microsoft.com/de-de/topic/update-zum-aktivieren-von-tls-1-1-und-tls-1-2-als-sichere-standardprotokolle-in-winhttp-in-windows-c4bd73d2-31d7-761e-0178-11268bb10392
+
 #include <iostream>
 #include <map>
 #include <deque>
@@ -22,7 +26,8 @@
 namespace fs = std::experimental::filesystem;
 #else
 #include <filesystem>
-namespace fs = std::filesystem;
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
 #endif
 
 #include "tinyxml2/tinyxml2.h"
@@ -218,7 +223,7 @@ string url_encode(const string& value)
 
 tuple<size_t, size_t, size_t> FindRedirectMarker(wstring strA, wstring strB)
 {
-    const static wregex rx(L"/");
+/*    const static wregex rx(L"/");
     vector<wstring> tokenA(wsregex_token_iterator(begin(strA), end(strA), rx, -1), wsregex_token_iterator());
     vector<wstring> tokenB(wsregex_token_iterator(begin(strB), end(strB), rx, -1), wsregex_token_iterator());
     size_t nStrt = 0;
@@ -239,7 +244,9 @@ tuple<size_t, size_t, size_t> FindRedirectMarker(wstring strA, wstring strB)
         }
         nStrt += 1 + tokenA[n].size();
     }
-    return make_tuple(0, 0, 0);
+    return make_tuple(0, 0, 0);*/
+    size_t nPos = strA.find(strB);
+    return make_tuple(0, nPos, 0);
 }
 
 void XmlIterate(const XMLElement* elm, tree<string, string>& treeXml, deque<pair<string, string>> queXmlNs = {}, string strAktNs = string())
@@ -314,8 +321,8 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         string strHttp("http");
         find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"HTTPS") ? strHttp += "s", true : false;  });
 
-        if (strPath.empty() == true)    // Kommt vor, wenn über FastCgi aufgerufen wird
-            if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"SCRIPT_FILENAME") ? strPath = url_decode(ConvertToByte(pr.second)), true : false;  }) != end(mapEnvList))
+        if (strPath.empty() == true)    // Kommt vor, wenn Ã¼ber FastCgi aufgerufen wird
+            if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"SCRIPT_FILENAME") ? strPath = pr.second/*url_decode(ConvertToByte(pr.second))*/, true : false;  }) != end(mapEnvList))
                 OutputDebugString(wstring(L"SCRIPT_FILENAME = " + strPath + L"\r\n").c_str());
 
         tuple<size_t, size_t, size_t> nDiff = FindRedirectMarker(strRequestUri, strPath);
@@ -380,13 +387,12 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 
         auto fnGetPathProp = [&](fs::path pItem, vector<pair<string, wstring>>& vPropertys) -> wstring
         {
-//            error_code ec;
+            error_code ec;
             struct _stat64 stFileInfo;
             int iRet = _wstat64(FN_STR(pItem.wstring()).c_str(), &stFileInfo);
 
             wstring strFName(pItem.filename().wstring());
-//            if (fs::is_directory(pItem))
-            if (S_ISDIR(stFileInfo.st_mode))
+            if (fs::is_directory(pItem, ec) == true && ec == error_code())
             {
 #if defined(_WIN32) || defined(_WIN64)
 //OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() + L"\r\n").c_str());
@@ -454,9 +460,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             }
 //this_thread::sleep_for(chrono::milliseconds(30000));
 
-            _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
-//            if (fs::is_directory(strRootPath + strPath) == true)
-            if (S_ISDIR(stFileInfo.st_mode))
+            if (fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
             {
                 //if (strPath.back() != L'/')
                 //    strPath += L'/';
@@ -485,9 +489,8 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                             continue;
                         vector<pair<string, wstring>> vPropertys;
                         wstring strRef = strRequestUri + fnGetPathProp(p.path(), vPropertys);
-//                        fnBuildRespons(element, strRef, fs::is_directory(p.status()), vPropertys);
-                        _wstat64(FN_STR(p.path().wstring()).c_str(), &stFileInfo);
-                        fnBuildRespons(element, strRef, S_ISDIR(stFileInfo.st_mode), vPropertys);
+                        bool bIsDir = fs::is_directory(p, ec) == true && ec == error_code();
+                        fnBuildRespons(element, strRef, bIsDir/*S_ISDIR(stFileInfo.st_mode)*/, vPropertys);
                     }
                 }
 
@@ -730,8 +733,7 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
         case 5: // DELETE
             iStatus = 404;  // Forbidden
-            _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
-            if (S_ISDIR(stFileInfo.st_mode))
+            if (fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
             {
                 if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
                     iStatus = 204;
@@ -888,39 +890,24 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
         {
             iStatus = 403;  // Forbidden
 //OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r\n").c_str());
-            if (nContentSize > 0)
+            fstream fout(fs::path(strRootPath + strPath), ios::out | ios::binary);
+            if (fout.is_open() == true)
             {
-                fstream fout(FN_STR(strRootPath + strPath), ios::out | ios::binary);
-                if (fout.is_open() == true)
+                if (nContentSize > 0)
                 {
                     //while (streamIn.eof() == false)
-                        copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(fout));
+                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(fout));
+                }
 
-                    fout.close();
+                fout.close();
 //OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
-                    iStatus = 201;
-                    //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
-                    vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
-                    //vHeaderList.push_back(make_pair("Content-Length", "0"));
-                }
-                else
-                    OutputDebugString(wstring(L"PUT: Error opening destination file\r\n").c_str());
+                iStatus = 201;
+                //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
+                vHeaderList.push_back(make_pair("Location" , string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
+                //vHeaderList.push_back(make_pair("Content-Length", "0"));
             }
-            else if (nContentSize == 0)
-            {
-                fstream fout(FN_STR(strRootPath + strPath), ios::out);
-                if (fout.is_open() == true)
-                {
-                    fout.close();
-//OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
-                    iStatus = 201;
-                    //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
-                    vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
-                    //vHeaderList.push_back(make_pair("Content-Length", "0"));
-                }
-                else
-                    OutputDebugString(wstring(L"PUT: Error opening destination file\r\n").c_str());
-            }
+            else
+                OutputDebugString(wstring(L"PUT: Error opening destination file: " + std::to_wstring(errno) + L"\r\n").c_str());
         }
         break;
 
@@ -981,8 +968,9 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
         case 11:// HEAD
         {
             iStatus = 200;
-            int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
-            if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
+            //int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            //if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
+            if (fs::is_regular_file(strRootPath + strPath, ec) == true && ec == error_code())
             {
                 stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
@@ -1076,7 +1064,7 @@ int main(int argc, const char* argv[], char **envp)
     wstring strModulePath = wstring(FILENAME_MAX, 0);
 #if defined(_WIN32) || defined(_WIN64)
     if (GetModuleFileName(NULL, &strModulePath[0], FILENAME_MAX) > 0)
-        strModulePath.erase(strModulePath.find_last_of(L'\\') + 1); // Sollte der Backslash nicht gefunden werden wird der ganz String gelöscht
+        strModulePath.erase(strModulePath.find_last_of(L'\\') + 1); // Sollte der Backslash nicht gefunden werden wird der ganz String gelÃ¶scht
 #else
     string strTmpPath(FILENAME_MAX, 0);
     if (readlink(string("/proc/" + to_string(getpid()) + "/exe").c_str(), &strTmpPath[0], FILENAME_MAX) > 0)
