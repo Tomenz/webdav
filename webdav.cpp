@@ -967,14 +967,20 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
         case 11:// HEAD
         {
+            //this_thread::sleep_for(chrono::milliseconds(30000));
             iStatus = 200;
             //int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
             //if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
             if (fs::is_regular_file(strRootPath + strPath, ec) == true && ec == error_code())
             {
-                stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
+                fs::file_time_type ftime = fs::last_write_time(strRootPath + strPath);
+                std::time_t cftime = decltype(ftime)::clock::to_time_t(ftime); // assuming system_clock
+
+                //stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
+                 stringstream strLastModTime; strLastModTime << put_time(::gmtime(&cftime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
-                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
+                size_t nFSize = fs::file_size(strRootPath + strPath);
+                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(cftime) + ":" + to_string(nFSize)).getDigest();
 
                 //vHeaderList.push_back(make_pair("Content-Type", strMineType));
                 vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
