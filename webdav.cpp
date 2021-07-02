@@ -292,7 +292,7 @@ void XmlIterate(const XMLElement* elm, tree<string, string>& treeXml, deque<pair
 
 int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvList, ostream& streamOut, istream& streamIn)
 {
-    vector<pair<string, string>> vHeaderList = { { make_pair("X-Powerd-By", "webdav-cgi/0.1"), make_pair("DAV", "1,2"), make_pair("MS-Author-Via", "DAV") } };
+    vector<pair<string, string>> vHeaderList = { { make_pair("X-Powerd-By", "webdav-cgi/0.1"), make_pair("DAV", "1,2") } };
 
     unordered_map<wstring, int>::const_iterator itMethode;
     if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"REQUEST_METHOD" && (itMethode = arMethoden.find(pr.second)) != end(arMethoden)) ? true : false;  }) != end(mapEnvList))
@@ -469,10 +469,12 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
                 wstring strDepth;
                 bool bNoRoot = false;
-                find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"HTTP_DEPTH") ? strDepth = pr.second, true : false;  });
-                size_t nPos = strDepth.find(L",noroot");
-                if (nPos != string::npos)
-                    bNoRoot = true, strDepth.erase(nPos);
+                if (find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"HTTP_DEPTH") ? strDepth = pr.second, true : false;  }) != end(mapEnvList))
+                {
+                    size_t nPos = strDepth.find(L",noroot");
+                    if (nPos != string::npos)
+                        bNoRoot = true, strDepth.erase(nPos);
+                }
 
                 if (bNoRoot == false)
                 {
@@ -495,7 +497,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 }
 
                 iStatus = 207;
-                vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
+                vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
                 //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
                 doc.Print(&streamer);
             }
@@ -515,7 +517,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
                     fnBuildRespons(element, strRequestUri, false, vPropertys);
                     iStatus = 207;
-                    vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
+                    vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
                     //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
                     doc.Print(&streamer);
                 }
@@ -528,135 +530,131 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             break;
 
         case 1: // PROPPATCH
-        {
-            XMLElement* pElemResp = doc.NewElement("D:response");
-            pElemResp->SetAttribute("xmlns:Z", "urn:schemas-microsoft-com:");
-            element->InsertEndChild(pElemResp);
-            XMLElement* pElemHRef = doc.NewElement("D:href");
-            //pElemHRef->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath)).c_str());
-            //string strRef(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri));
-            string strRef(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri));
-            pElemHRef->SetText(strRef.c_str());
-            pElemResp->InsertEndChild(pElemHRef);
-
-
-            tinyxml2::XMLDocument xmlIn;
-            if (nContentSize > 0)
             {
-                stringstream ss;
-                copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
-                /*while (streamIn.eof() == false)
+                XMLElement* pElemResp = doc.NewElement("D:response");
+                pElemResp->SetAttribute("xmlns:Z", "urn:schemas-microsoft-com:");
+                element->InsertEndChild(pElemResp);
+                XMLElement* pElemHRef = doc.NewElement("D:href");
+                //pElemHRef->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath)).c_str());
+                //string strRef(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri));
+                string strRef(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri));
+                pElemHRef->SetText(strRef.c_str());
+                pElemResp->InsertEndChild(pElemHRef);
+
+                tinyxml2::XMLDocument xmlIn;
+                if (nContentSize > 0)
                 {
-                    char caBuffer[4096];
-                    size_t nRead = streamIn.read(caBuffer, 4096).gcount();
-                    if (nRead > 0)
-                        ss.write(caBuffer, nRead);
-                    else
-                        this_thread::sleep_for(chrono::milliseconds(10));
-                }*/
-
-                xmlIn.Parse(ss.str().c_str(), ss.str().size());
-
-                XmlIterate(xmlIn.RootElement(), treeXml);
-            }
-
-            function<bool(const string&, const string&)> fnApplyProperty = [&](const string& strProperty, const string& strValue) -> bool
-            {   // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
-                if (strProperty == "Z:Win32CreationTime" || strProperty == "Z:Win32LastAccessTime" || strProperty == "Z:Win32LastModifiedTime")
-                {
-                    tm tmTime = { 0 };
-                    stringstream ss(strValue);
-                    ss >> get_time(&tmTime, "%a, %d %b %Y %H:%M:%S GMT");
-
-                    struct _stat stFile;
-                    if (_stat(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &stFile) == 0) // Alles OK
+                    stringstream ss;
+                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                    /*while (streamIn.eof() == false)
                     {
-                        struct _utimbuf utTime;
-                        utTime.actime = stFile.st_atime;
-                        utTime.modtime = stFile.st_mtime;
+                        char caBuffer[4096];
+                        size_t nRead = streamIn.read(caBuffer, 4096).gcount();
+                        if (nRead > 0)
+                            ss.write(caBuffer, nRead);
+                        else
+                            this_thread::sleep_for(chrono::milliseconds(10));
+                    }*/
 
-                        if (strProperty == "Z:Win32LastModifiedTime")
-                            utTime.modtime = _mkgmtime(&tmTime);
-                        if (strProperty == "Z:Win32LastAccessTime")
-                            utTime.actime = _mkgmtime(&tmTime);
+                    xmlIn.Parse(ss.str().c_str(), ss.str().size());
 
-                        if (_utime(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &utTime) == 0)
-                            return true;
-                    }
+                    XmlIterate(xmlIn.RootElement(), treeXml);
                 }
-                else if (strProperty == "Z:Win32FileAttributes")
-                {
-#if defined(_WIN32) || defined(_WIN64)
-                    DWORD dwAttr = stoi(strValue, 0, 16);
-                    if (SetFileAttributes(wstring(strRootPath + strPath).c_str(), dwAttr) != 0)
-                        return true;
-#endif
-                }
-                return false;
-            };
 
-            if (treeXml.Element == "DAV:propertyupdate" && treeXml.front().Element == "DAV:set")
-            {
-                for (auto itSet : treeXml.front())
-                {
-                    if (itSet.Element == "DAV:prop")
+                function<bool(const string&, const string&)> fnApplyProperty = [&](const string& strProperty, const string& strValue) -> bool
+                {   // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
+                    if (strProperty == "Z:Win32CreationTime" || strProperty == "Z:Win32LastAccessTime" || strProperty == "Z:Win32LastModifiedTime")
                     {
-                        for (auto itProp : itSet)
+                        tm tmTime = { 0 };
+                        stringstream ss(strValue);
+                        ss >> get_time(&tmTime, "%a, %d %b %Y %H:%M:%S GMT");
+
+                        struct _stat stFile;
+                        if (_stat(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &stFile) == 0) // Alles OK
                         {
+                            struct _utimbuf utTime;
+                            utTime.actime = stFile.st_atime;
+                            utTime.modtime = stFile.st_mtime;
+
+                            if (strProperty == "Z:Win32LastModifiedTime")
+                                utTime.modtime = _mkgmtime(&tmTime);
+                            if (strProperty == "Z:Win32LastAccessTime")
+                                utTime.actime = _mkgmtime(&tmTime);
+
+                            if (_utime(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &utTime) == 0)
+                                return true;
+                        }
+                    }
+                    else if (strProperty == "Z:Win32FileAttributes")
+                    {
+#if defined(_WIN32) || defined(_WIN64)
+                        DWORD dwAttr = stoi(strValue, 0, 16);
+                        if (SetFileAttributes(wstring(strRootPath + strPath).c_str(), dwAttr) != 0)
+                            return true;
+#endif
+                    }
+                    return false;
+                };
+
+                if (treeXml.Element == "DAV:propertyupdate" && treeXml.front().Element == "DAV:set")
+                {
+                    for (auto itSet : treeXml.front())
+                    {
+                        if (itSet.Element == "DAV:prop")
+                        {
+                            for (auto itProp : itSet)
+                            {
 #if defined(_WIN32) || defined(_WIN64)
 //                            OutputDebugStringA(string("Element: " + itProp.Element + ", Value: " + itProp.Value + "\r\n").c_str());
 #endif
+                            }
                         }
                     }
                 }
-            }
 
-            XMLElement* pElement = xmlIn.FirstChildElement("D:propertyupdate");
-            if (pElement != nullptr)
-            {
-                const XMLAttribute* pAttribut = pElement->FirstAttribute();
-                while (pAttribut)
-                {
-                    pAttribut = pAttribut->Next();
-                }
-
-                pElement = pElement->FirstChildElement("D:set");
+                XMLElement* pElement = xmlIn.FirstChildElement("D:propertyupdate");
                 if (pElement != nullptr)
                 {
-                    pElement = pElement->FirstChildElement("D:prop");
+                    const XMLAttribute* pAttribut = pElement->FirstAttribute();
+                    while (pAttribut)
+                    {
+                        pAttribut = pAttribut->Next();
+                    }
+
+                    pElement = pElement->FirstChildElement("D:set");
                     if (pElement != nullptr)
                     {
-                        XMLElement* pElemPropStat = doc.NewElement("D:propstat");
-                        XMLElement* pElemProp = doc.NewElement("D:prop");
-                        pElemPropStat->InsertEndChild(pElemProp);
-
-                        pElement = pElement->FirstChildElement();
-                        while (pElement)
+                        pElement = pElement->FirstChildElement("D:prop");
+                        if (pElement != nullptr)
                         {
-                            const char* pElemName = pElement->Name();
-                            const char* pElemValue = pElement->GetText();
-                            fnApplyProperty(pElemName, pElemValue);
-                            pElemProp->InsertEndChild(doc.NewElement(pElemName));
-                            pElement = pElement->NextSiblingElement();
+                            XMLElement* pElemPropStat = doc.NewElement("D:propstat");
+                            XMLElement* pElemProp = doc.NewElement("D:prop");
+                            pElemPropStat->InsertEndChild(pElemProp);
+
+                            pElement = pElement->FirstChildElement();
+                            while (pElement)
+                            {
+                                const char* pElemName = pElement->Name();
+                                const char* pElemValue = pElement->GetText();
+                                fnApplyProperty(pElemName, pElemValue);
+                                pElemProp->InsertEndChild(doc.NewElement(pElemName));
+                                pElement = pElement->NextSiblingElement();
+                            }
+
+                            XMLElement* pElemStatus = doc.NewElement("D:status");
+                            pElemStatus->SetText("HTTP/1.1 200 Ok");
+                            pElemPropStat->InsertEndChild(pElemStatus);
+
+                            pElemResp->InsertEndChild(pElemPropStat);
                         }
-
-                        XMLElement* pElemStatus = doc.NewElement("D:status");
-                        pElemStatus->SetText("HTTP/1.1 200 Ok");
-                        pElemPropStat->InsertEndChild(pElemStatus);
-
-                        pElemResp->InsertEndChild(pElemPropStat);
                     }
                 }
             }
-
-
-
-        }
-        iStatus = 207;
-        vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
-        //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
-        doc.Print(&streamer);
-        break;
+            iStatus = 207;
+            vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
+            //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
+            doc.Print(&streamer);
+            break;
 
         case 2: // MKCOL
             iStatus = 403;
@@ -732,22 +730,49 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
             break;
 
         case 5: // DELETE
-            iStatus = 404;  // Forbidden
-            if (fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
+            iStatus = 404;  // Not found
+            if (fs::exists(strRootPath + strPath, ec) && ec == error_code())
             {
-                if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
-                    iStatus = 204;
-                else if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
-                    iStatus = 204;
+                iStatus = 423;  // Locked
+                if (fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
+                {
+                    if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
+                        iStatus = 204;
+                    else if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+                        iStatus = 204;
+                    else
+                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing path\r\n").c_str());
+                }
                 else
-                    OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing path\r\n").c_str());
-            }
-            else
-            {
-                if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
-                    iStatus = 204;
-                else
-                    OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing file\r\n").c_str());
+                {
+                    if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+                        iStatus = 204;
+                    else
+                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing file\r\n").c_str());
+                }
+
+                if (iStatus != 204)
+                {
+                    XMLElement* respons = doc.NewElement("D:response");
+                    respons->SetAttribute("xmlns:lp1", "DAV:");
+                    element->InsertEndChild(respons);
+
+                    XMLElement* href = doc.NewElement("D:href");
+                    href->SetText(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri).c_str());
+                    respons->InsertEndChild(href);
+
+                    XMLElement* status = doc.NewElement("D:status");
+                    status->SetText("HTTP/1.1 423 Locked");
+                    respons->InsertEndChild(status);
+
+                    XMLElement* error = doc.NewElement("D:error");
+                    error->SetText("<d:lock-token-submitted/>");
+                    respons->InsertEndChild(error);
+
+                    iStatus = 207;
+                    vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
+                    doc.Print(&streamer);
+                }
             }
             break;
 
@@ -876,14 +901,14 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
             iStatus = 200;
             vHeaderList.push_back(make_pair("Lock-Token", to_string(nNextLockToken)));
-            vHeaderList.push_back(make_pair("Content-Type", "text/xml; charset=\"utf-8\""));
+            vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
             //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
             xmlOut.Print(&streamer);
         }
         break;
 
         case 7: // UNLOCK
-            iStatus = 204;
+            iStatus = 204;  // No Content - Normal success response
             break;
 
         case 8: // PUT
