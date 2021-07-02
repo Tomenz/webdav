@@ -392,7 +392,8 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
             int iRet = _wstat64(FN_STR(pItem.wstring()).c_str(), &stFileInfo);
 
             wstring strFName(pItem.filename().wstring());
-            if (fs::is_directory(pItem, ec) == true && ec == error_code())
+            if ((fs::is_directory(pItem, ec) == true && ec == error_code())
+            || (iRet == 0 && stFileInfo.st_mode & __S_IFDIR))
             {
 #if defined(_WIN32) || defined(_WIN64)
 //OutputDebugString(wstring(L"-->" + strFName + L"<-->" + pItem.generic_wstring() + L"\r\n").c_str());
@@ -459,8 +460,43 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 }
             }
 //this_thread::sleep_for(chrono::milliseconds(30000));
+/*{
+    fs::path pFile(strRootPath + strPath);
+    fs::file_status status = fs::status(pFile, ec);
+    if (ec != error_code()) OutputDebugStringA(std::string("error_code = " + std::to_string(ec.value()) + "\n").c_str());
+    if(fs::is_regular_file(status)) OutputDebugStringA(" is a regular file\n");
+    if(fs::is_directory(status)) OutputDebugStringA(" is a directory\n");
+    if(fs::is_block_file(status)) OutputDebugStringA(" is a block device\n");
+    if(fs::is_character_file(status)) OutputDebugStringA(" is a character device\n");
+    if(fs::is_fifo(status)) OutputDebugStringA(" is a named IPC pipe\n");
+    if(fs::is_socket(status)) OutputDebugStringA(" is a named IPC socket\n");
+    if(fs::is_symlink(status)) OutputDebugStringA(" is a symlink\n");
+    if(!fs::exists(status)) OutputDebugStringA(" does not exist\n");
 
-            if (fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
+    status = fs::symlink_status(pFile, ec);
+    if (ec != error_code()) OutputDebugStringA(std::string("error_code = " + std::to_string(ec.value()) + "\n").c_str());
+    if(fs::is_regular_file(status)) OutputDebugStringA("link is a regular file\n");
+    if(fs::is_directory(status)) OutputDebugStringA("link is a directory\n");
+    if(fs::is_block_file(status)) OutputDebugStringA("link is a block device\n");
+    if(fs::is_character_file(status)) OutputDebugStringA("link is a character device\n");
+    if(fs::is_fifo(status)) OutputDebugStringA("link is a named IPC pipe\n");
+    if(fs::is_socket(status)) OutputDebugStringA("link is a named IPC socket\n");
+    if(fs::is_symlink(status)) OutputDebugStringA("link is a symlink\n");
+    if(!fs::exists(status)) OutputDebugStringA("link does not exist\n");
+
+    struct _stat64 stFileInfo;
+    int iRet = _wstat64(pFile.string().c_str(), &stFileInfo);
+    if (stFileInfo.st_mode & __S_IFDIR)
+            {
+        OutputDebugStringA("stat is a directory\n");
+        for (auto& p : fs::directory_iterator(pFile))
+        {
+            OutputDebugString(std::wstring(p.path().wstring() + L"\n").c_str());
+        }
+    }
+}*/
+            if ((fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
+            || (_wstat64(fs::path(strRootPath + strPath).string().c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & __S_IFDIR))
             {
                 //if (strPath.back() != L'/')
                 //    strPath += L'/';
@@ -491,7 +527,8 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                             continue;
                         vector<pair<string, wstring>> vPropertys;
                         wstring strRef = strRequestUri + fnGetPathProp(p.path(), vPropertys);
-                        bool bIsDir = fs::is_directory(p, ec) == true && ec == error_code();
+                        bool bIsDir = ((fs::is_directory(p, ec) == true && ec == error_code())
+                                        || (_wstat64(p.path().string().c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & __S_IFDIR));
                         fnBuildRespons(element, strRef, bIsDir/*S_ISDIR(stFileInfo.st_mode)*/, vPropertys);
                     }
                 }
@@ -734,7 +771,8 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
             if (fs::exists(strRootPath + strPath, ec) && ec == error_code())
             {
                 iStatus = 423;  // Locked
-                if (fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
+            if ((fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
+            || (_wstat64(fs::path(strRootPath + strPath).string().c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & __S_IFDIR))
                 {
                     if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
                         iStatus = 204;

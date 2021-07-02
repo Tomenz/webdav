@@ -3,7 +3,7 @@
 
 CC = g++
 #CFLAGS = -ggdb -w -pthread
-CFLAGS = -Wall -O3 -std=c++14 -pthread -ffunction-sections -fdata-sections -lstdc++fs
+CFLAGS = -Wall -O3 -std=c++17 -pthread -ffunction-sections -fdata-sections -lstdc++fs
 LDFLAGS = -Wl,--gc-sections -lpthread -static-libgcc -static-libstdc++ -lstdc++fs # -latomic
 
 INC_PATH = -I .
