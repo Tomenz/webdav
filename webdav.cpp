@@ -30,6 +30,7 @@ namespace fs = std::experimental::filesystem;
 namespace fs = std::experimental::filesystem;
 #endif
 
+#include "SrvLib/Service.h"
 #include "tinyxml2/tinyxml2.h"
 #include "FastCgi/FastCgi.h"
 #include "md5/md5.h"
@@ -137,6 +138,8 @@ auto _kbhit = []() -> int
     return 0;
 };
 #endif
+
+#pragma comment(lib, "SrvLib.lib")
 
 const static unordered_map<wstring, int> arMethoden = { { L"PROPFIND", 0 },{ L"PROPPATCH", 1 },{ L"MKCOL", 2 },{ L"COPY", 3 },{ L"MOVE", 4 },{ L"DELETE", 5 },{ L"LOCK", 6 },{ L"UNLOCK", 7 },{ L"PUT", 8 },{ L"OPTIONS", 9 },{ L"GET", 10 }, { L"HEAD", 11 } };
 
@@ -348,11 +351,10 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     //size_t nPos = strReqOffstr.find(strPath);
     //strReqOffstr.erase(nPos != string::npos ? nPos : 0);
 
-    int iRW = 0;
-    {
-        static std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>> mapAccess;
-        static time_t tLastWriteTime = 0;
+    static std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>> mapAccess;
+    static time_t tLastWriteTime = 0;
 
+    {
         struct _stat64 stFileInfo;
         int iRet = _wstat64(FN_STR((strModulePath + L"/.access")).c_str(), &stFileInfo);
         //OutputDebugStringA(std::string("ret: " + std::to_string(iRet) + ", difftime:" + std::to_string(difftime(stFileInfo.st_mtime, tLastWriteTime)) + "\r\n").c_str());
@@ -362,7 +364,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
             if (fin.is_open() == true)
             {
                 mapAccess.clear();
-                std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>>::iterator itLastDir = mapAccess.end();
+                std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>>::iterator itLastDir = mapAccess.end();                
                 while (fin.eof() == false)
                 {
                     std::string strLine;
@@ -372,10 +374,23 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                         OutputDebugStringA(std::string("fin reads: " + strLine + "\r\n").c_str());
                         if (isspace(strLine[0]) == false)
                         {
+                            bool bExcluded = false;
                             replace(begin(strLine), end(strLine), L'\\', L'/');
+                            size_t nPos = strLine.find(",");
+                            if (nPos != string::npos)
+                            {
+                                string strTmp = strLine.substr(nPos + 1);
+                                strLine.erase(nPos);
+                                std::transform(begin(strTmp), end(strTmp), begin(strTmp), [](char c) noexcept { return static_cast<char>(::tolower(c)); });
+                                bExcluded = strTmp.find("independent") != string::npos;
+                            }
                             auto prResult = mapAccess.emplace(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(strLine), std::vector<std::tuple<std::string, std::string, std::string>>());
                             if (prResult.second == true)
+                            {
                                 itLastDir = prResult.first;
+                                if (bExcluded == false)
+                                    itLastDir->second.push_back({ "","","" });
+                            }
                         }
                         else
                         {
@@ -395,70 +410,109 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                 fin.close();
 
                 tLastWriteTime = stFileInfo.st_mtime;
-            }
-        }
 
-        auto fnSendNotAuthenticate = [&]()
-        {
-            vHeaderList.push_back(make_pair("status", to_string(401)));
-            vHeaderList.push_back(make_pair("WWW-Authenticate", "Basic realm=\"DavAccess\""));
-
-            string strHeader;
-            for (const auto& itItem : vHeaderList)
-                strHeader += itItem.first + ": " + itItem.second + "\n";
-            strHeader += "\n";
-
-            streamOut << strHeader;
-        };
-
-        // Find if Item path is configured, if yes use this
-        std::wstring strItemPath = strRootPath + strPath;
-        auto itFound = mapAccess.find(strItemPath);
-        while (itFound == mapAccess.end() && strItemPath != strRootPath)
-        {
-            size_t nPos = strItemPath.rfind(L"/");
-            if (nPos == std::string::npos) break;
-            if (strItemPath[strItemPath.size() - 1] != L'/' && strItemPath.size() - 1 > nPos) ++nPos;
-            strItemPath.erase(nPos);
-            itFound = mapAccess.find(strItemPath);
-        }
-
-        if (itFound == mapAccess.end())
-        {
-            fnSendNotAuthenticate();
-            return 0;
-        }
-
-        string::size_type nPosSpace = strAuthorization.find(L' ');
-        if (nPosSpace != string::npos)
-        {
-            if (strAuthorization.substr(0, nPosSpace) == L"Basic")
-            {
-                string strCredential = Base64::Decode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strAuthorization.substr(nPosSpace + 1)));
-                OutputDebugStringA(string("UserName&Password = " + strCredential + "\r\n").c_str());
-
-                size_t nPos = strCredential.find(":");
-                std::transform(begin(strCredential), begin(strCredential) + nPos, begin(strCredential), [](char c) noexcept { return static_cast<char>(::tolower(c)); });
-
-                for (auto itTpCred : itFound->second)
-                {
-                    if (get<0>(itTpCred) + ":" + get<1>(itTpCred) == strCredential)
+                // Fix vererbung
+                for (auto& itAccess : mapAccess)
+                {   // Do we have a marker entry, all empty
+                    if (get<0>(*itAccess.second.begin()) == "" && get<1>(*itAccess.second.begin()) == "" && get<2>(*itAccess.second.begin()) == "")
                     {
-                        if (get<2>(itTpCred) == "r" || get<2>(itTpCred) == "rw" || get<2>(itTpCred) == "wr")
-                            iRW = 1;
-                        if (get<2>(itTpCred) == "w" || get<2>(itTpCred) == "rw" || get<2>(itTpCred) == "wr")
-                            iRW |= 2;
-                        break;
+                        itAccess.second.erase(itAccess.second.begin()); // delete marker entry
+                        std::wstring strPath = itAccess.first;
+                        while (strPath.size() > strRootPath.size() && strPath != strRootPath)
+                        {
+                            size_t nPos = strPath.rfind(L"/");
+                            strPath.erase(nPos + 1 == strPath.size() ? nPos : nPos + 1);
+                            auto& itFound = mapAccess.find(strPath);
+                            if (itFound != mapAccess.end() && *itFound != itAccess)
+                            {
+                                for (auto& it : itFound->second)
+                                {
+                                    if (get<0>(it) != "" || get<1>(it) != "" || get<2>(it) != "")
+                                        itAccess.second.push_back(it);
+                                }
+                            }
+                        }
                     }
                 }
+
             }
         }
+    }
 
-        if (iRW == 0)
+    auto fnSendNotAuthenticate = [&]()
+    {
+        vHeaderList.push_back(make_pair("status", to_string(401)));
+        vHeaderList.push_back(make_pair("WWW-Authenticate", "Basic realm=\"DavAccess\""));
+
+        string strHeader;
+        for (const auto& itItem : vHeaderList)
+            strHeader += itItem.first + ": " + itItem.second + "\n";
+        strHeader += "\n";
+
+        streamOut << strHeader;
+    };
+
+    // Find if Item path is configured, if yes use this
+    auto fnGetDirAccess = [&](std::wstring strPath) -> std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>>::iterator
+    {
+        replace(begin(strPath), end(strPath), L'\\', L'/');
+        auto itFound = mapAccess.find(strPath);
+        while (itFound == mapAccess.end() && strPath != strRootPath)
         {
-            fnSendNotAuthenticate();
-            return 0;
+            size_t nPos = strPath.rfind(L"/");
+            if (nPos == std::string::npos) break;
+            if (strPath[strPath.size() - 1] != L'/' && strPath.size() - 1 > nPos) ++nPos;
+            strPath.erase(nPos);
+            itFound = mapAccess.find(strPath);
         }
+
+        return itFound;
+    };
+
+    auto itFound = fnGetDirAccess(strRootPath + strPath);
+    if (itFound == mapAccess.end())
+    {
+        fnSendNotAuthenticate();
+        return 0;
+    }
+
+    string strCredential;
+    string::size_type nPosSpace = strAuthorization.find(L' ');
+    if (nPosSpace != string::npos)
+    {
+        if (strAuthorization.substr(0, nPosSpace) == L"Basic")
+        {
+            strCredential = Base64::Decode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strAuthorization.substr(nPosSpace + 1)));
+            OutputDebugStringA(string("UserName&Password = " + strCredential + "\r\n").c_str());
+
+            size_t nPos = strCredential.find(":");
+            std::transform(begin(strCredential), begin(strCredential) + nPos, begin(strCredential), [](char c) noexcept { return static_cast<char>(::tolower(c)); });
+        }
+    }
+
+    auto fnGetReadWriteAccess = [&strCredential](std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>>::iterator& iMapAccess) -> int
+    {
+        int iRet = 0;
+        for (auto itTpCred : iMapAccess->second)
+        {
+            if (get<0>(itTpCred) + ":" + get<1>(itTpCred) == strCredential)
+            {
+                if (get<2>(itTpCred) == "r" || get<2>(itTpCred) == "rw" || get<2>(itTpCred) == "wr")
+                    iRet = 1;
+                if (get<2>(itTpCred) == "w" || get<2>(itTpCred) == "rw" || get<2>(itTpCred) == "wr")
+                    iRet |= 2;
+                OutputDebugString(wstring(L"ZUGRISSRECHTE: PFAD = " + iMapAccess->first + L", USER = " + wstring(begin(strCredential), end(strCredential)) + L", RECHTE = " + to_wstring(iRet) + L"\r\n").c_str());
+                break;
+            }
+        }
+        return iRet;
+    };
+
+    int iRW = fnGetReadWriteAccess(itFound);
+    if (iRW == 0)
+    {
+        fnSendNotAuthenticate();
+        return 0;
     }
 
     auto fnBuildRespons = [](XMLNode* parent, const wstring& strRef, bool bIsCollection, vector<pair<string, wstring>> vPrItems)
@@ -706,412 +760,444 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         break;
 
     case 1: // PROPPATCH
+        iStatus = 403;
+        if ((iRW & 2) == 2)
         {
-            XMLElement* pElemResp = doc.NewElement("D:response");
-            pElemResp->SetAttribute("xmlns:Z", "urn:schemas-microsoft-com:");
-            element->InsertEndChild(pElemResp);
-            XMLElement* pElemHRef = doc.NewElement("D:href");
-            //pElemHRef->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath)).c_str());
-            //string strRef(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri));
-            string strRef(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri));
-            pElemHRef->SetText(strRef.c_str());
-            pElemResp->InsertEndChild(pElemHRef);
-
-            tinyxml2::XMLDocument xmlIn;
-            if (nContentSize > 0)
             {
-                stringstream ss;
-                copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
-                /*while (streamIn.eof() == false)
+                XMLElement* pElemResp = doc.NewElement("D:response");
+                pElemResp->SetAttribute("xmlns:Z", "urn:schemas-microsoft-com:");
+                element->InsertEndChild(pElemResp);
+                XMLElement* pElemHRef = doc.NewElement("D:href");
+                //pElemHRef->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath)).c_str());
+                //string strRef(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri));
+                string strRef(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri));
+                pElemHRef->SetText(strRef.c_str());
+                pElemResp->InsertEndChild(pElemHRef);
+
+                tinyxml2::XMLDocument xmlIn;
+                if (nContentSize > 0)
                 {
-                    char caBuffer[4096];
-                    size_t nRead = streamIn.read(caBuffer, 4096).gcount();
-                    if (nRead > 0)
-                        ss.write(caBuffer, nRead);
-                    else
-                        this_thread::sleep_for(chrono::milliseconds(10));
-                }*/
-
-                xmlIn.Parse(ss.str().c_str(), ss.str().size());
-
-                XmlIterate(xmlIn.RootElement(), treeXml);
-            }
-
-            function<bool(const string&, const string&)> fnApplyProperty = [&](const string& strProperty, const string& strValue) -> bool
-            {   // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
-                if (strProperty == "Z:Win32CreationTime" || strProperty == "Z:Win32LastAccessTime" || strProperty == "Z:Win32LastModifiedTime")
-                {
-                    tm tmTime = { 0 };
-                    stringstream ss(strValue);
-                    ss >> get_time(&tmTime, "%a, %d %b %Y %H:%M:%S GMT");
-
-                    struct _stat stFile;
-                    if (_stat(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &stFile) == 0) // Alles OK
+                    stringstream ss;
+                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                    /*while (streamIn.eof() == false)
                     {
-                        struct _utimbuf utTime;
-                        utTime.actime = stFile.st_atime;
-                        utTime.modtime = stFile.st_mtime;
+                        char caBuffer[4096];
+                        size_t nRead = streamIn.read(caBuffer, 4096).gcount();
+                        if (nRead > 0)
+                            ss.write(caBuffer, nRead);
+                        else
+                            this_thread::sleep_for(chrono::milliseconds(10));
+                    }*/
 
-                        if (strProperty == "Z:Win32LastModifiedTime")
-                            utTime.modtime = _mkgmtime(&tmTime);
-                        if (strProperty == "Z:Win32LastAccessTime")
-                            utTime.actime = _mkgmtime(&tmTime);
+                    xmlIn.Parse(ss.str().c_str(), ss.str().size());
 
-                        if (_utime(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &utTime) == 0)
-                            return true;
-                    }
+                    XmlIterate(xmlIn.RootElement(), treeXml);
                 }
-                else if (strProperty == "Z:Win32FileAttributes")
-                {
-#if defined(_WIN32) || defined(_WIN64)
-                    DWORD dwAttr = stoi(strValue, 0, 16);
-                    if (SetFileAttributes(wstring(strRootPath + strPath).c_str(), dwAttr) != 0)
-                        return true;
-#endif
-                }
-                return false;
-            };
 
-            if (treeXml.Element == "DAV:propertyupdate" && treeXml.front().Element == "DAV:set")
-            {
-                for (auto itSet : treeXml.front())
-                {
-                    if (itSet.Element == "DAV:prop")
+                function<bool(const string&, const string&)> fnApplyProperty = [&](const string& strProperty, const string& strValue) -> bool
+                {   // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
+                    if (strProperty == "Z:Win32CreationTime" || strProperty == "Z:Win32LastAccessTime" || strProperty == "Z:Win32LastModifiedTime")
                     {
-                        for (auto itProp : itSet)
+                        tm tmTime = { 0 };
+                        stringstream ss(strValue);
+                        ss >> get_time(&tmTime, "%a, %d %b %Y %H:%M:%S GMT");
+
+                        struct _stat stFile;
+                        if (_stat(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &stFile) == 0) // Alles OK
                         {
+                            struct _utimbuf utTime;
+                            utTime.actime = stFile.st_atime;
+                            utTime.modtime = stFile.st_mtime;
+
+                            if (strProperty == "Z:Win32LastModifiedTime")
+                                utTime.modtime = _mkgmtime(&tmTime);
+                            if (strProperty == "Z:Win32LastAccessTime")
+                                utTime.actime = _mkgmtime(&tmTime);
+
+                            if (_utime(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &utTime) == 0)
+                                return true;
+                        }
+                    }
+                    else if (strProperty == "Z:Win32FileAttributes")
+                    {
 #if defined(_WIN32) || defined(_WIN64)
-//                            OutputDebugStringA(string("Element: " + itProp.Element + ", Value: " + itProp.Value + "\r\n").c_str());
+                        DWORD dwAttr = stoi(strValue, 0, 16);
+                        if (SetFileAttributes(wstring(strRootPath + strPath).c_str(), dwAttr) != 0)
+                            return true;
 #endif
+                    }
+                    return false;
+                };
+
+                if (treeXml.Element == "DAV:propertyupdate" && treeXml.front().Element == "DAV:set")
+                {
+                    for (auto itSet : treeXml.front())
+                    {
+                        if (itSet.Element == "DAV:prop")
+                        {
+                            for (auto itProp : itSet)
+                            {
+#if defined(_WIN32) || defined(_WIN64)
+                                //                            OutputDebugStringA(string("Element: " + itProp.Element + ", Value: " + itProp.Value + "\r\n").c_str());
+#endif
+                            }
                         }
                     }
                 }
-            }
 
-            XMLElement* pElement = xmlIn.FirstChildElement("D:propertyupdate");
-            if (pElement != nullptr)
-            {
-                const XMLAttribute* pAttribut = pElement->FirstAttribute();
-                while (pAttribut)
-                {
-                    pAttribut = pAttribut->Next();
-                }
-
-                pElement = pElement->FirstChildElement("D:set");
+                XMLElement* pElement = xmlIn.FirstChildElement("D:propertyupdate");
                 if (pElement != nullptr)
                 {
-                    pElement = pElement->FirstChildElement("D:prop");
+                    const XMLAttribute* pAttribut = pElement->FirstAttribute();
+                    while (pAttribut)
+                    {
+                        pAttribut = pAttribut->Next();
+                    }
+
+                    pElement = pElement->FirstChildElement("D:set");
                     if (pElement != nullptr)
                     {
-                        XMLElement* pElemPropStat = doc.NewElement("D:propstat");
-                        XMLElement* pElemProp = doc.NewElement("D:prop");
-                        pElemPropStat->InsertEndChild(pElemProp);
-
-                        pElement = pElement->FirstChildElement();
-                        while (pElement)
+                        pElement = pElement->FirstChildElement("D:prop");
+                        if (pElement != nullptr)
                         {
-                            const char* pElemName = pElement->Name();
-                            const char* pElemValue = pElement->GetText();
-                            fnApplyProperty(pElemName, pElemValue);
-                            pElemProp->InsertEndChild(doc.NewElement(pElemName));
-                            pElement = pElement->NextSiblingElement();
+                            XMLElement* pElemPropStat = doc.NewElement("D:propstat");
+                            XMLElement* pElemProp = doc.NewElement("D:prop");
+                            pElemPropStat->InsertEndChild(pElemProp);
+
+                            pElement = pElement->FirstChildElement();
+                            while (pElement)
+                            {
+                                const char* pElemName = pElement->Name();
+                                const char* pElemValue = pElement->GetText();
+                                fnApplyProperty(pElemName, pElemValue);
+                                pElemProp->InsertEndChild(doc.NewElement(pElemName));
+                                pElement = pElement->NextSiblingElement();
+                            }
+
+                            XMLElement* pElemStatus = doc.NewElement("D:status");
+                            pElemStatus->SetText("HTTP/1.1 200 Ok");
+                            pElemPropStat->InsertEndChild(pElemStatus);
+
+                            pElemResp->InsertEndChild(pElemPropStat);
                         }
-
-                        XMLElement* pElemStatus = doc.NewElement("D:status");
-                        pElemStatus->SetText("HTTP/1.1 200 Ok");
-                        pElemPropStat->InsertEndChild(pElemStatus);
-
-                        pElemResp->InsertEndChild(pElemPropStat);
                     }
                 }
             }
+            iStatus = 207;
+            vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
+            //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
+            doc.Print(&streamer);
         }
-        iStatus = 207;
-        vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
-        //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
-        doc.Print(&streamer);
         break;
 
     case 2: // MKCOL
         iStatus = 403;
-        if (fs::create_directory(strRootPath + strPath, ec) == true && ec == error_code())
-            iStatus = 201;
-        else
-            OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" create directory: " + strRootPath + strPath + L"\r\n").c_str());
+        if ((iRW & 2) == 2)
+        {
+            if (fs::create_directory(strRootPath + strPath, ec) == true && ec == error_code())
+                iStatus = 201;
+            else
+                OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" create directory: " + strRootPath + strPath + L"\r\n").c_str());
+        }
         break;
 
     case 3: // COPY
         iStatus = 403;
-        find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr)
+        if ((iRW & 1) == 1)
         {
-            if (pr.first == L"HTTP_DESTINATION")
-            {
-                // "destination", "http://thomas-pc/sample/test1/"
-                size_t nPos = pr.second.find(strHost);
-                if (nPos != string::npos)
+            find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr)
                 {
-                    fs::path src(wstring(strRootPath + strPath));
-                    wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
-//                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
-strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
+                    if (pr.first == L"HTTP_DESTINATION")
+                    {
+                        // "destination", "http://thomas-pc/sample/test1/"
+                        size_t nPos = pr.second.find(strHost);
+                        if (nPos != string::npos)
+                        {
+                            fs::path src(wstring(strRootPath + strPath));
+                            wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
+                            //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+                            strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
 
-                    //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
-                    fs::path dst(strRootPath + strDst);
+                            //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
+                            fs::path dst(strRootPath + strDst);
 
-                    error_code ec;
-                    fs::copy(src, dst, fs::copy_options::overwrite_existing|fs::copy_options::recursive, ec);
-                    if (ec == error_code())
-                        iStatus = 201;
-                    else
-                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" copy from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
-                }
-                return true;
-            }
-            return false;
-        });
+                            auto itFoundDest = fnGetDirAccess(dst.wstring());
+                            if (itFoundDest != mapAccess.end())
+                            {
+                                int iRWDest = fnGetReadWriteAccess(itFoundDest);
+                                if ((iRWDest & 2) == 2)
+                                {
+                                    error_code ec;
+                                    fs::copy(src, dst, fs::copy_options::overwrite_existing | fs::copy_options::recursive, ec);
+                                    if (ec == error_code())
+                                        iStatus = 201;
+                                    else
+                                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" copy from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                    return false;
+                });
+        }
         break;
 
     case 4: // MOVE
         iStatus = 403;  // Forbidden
-        find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr)
+        if ((iRW & 1) == 1)
         {
-            if (pr.first == L"HTTP_DESTINATION")
-            {
-                // "destination", "http://thomas-pc/sample/test1/"
-                size_t nPos = pr.second.find(strHost);
-                if (nPos != string::npos)
+            find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr)
                 {
-                    fs::path src(wstring(strRootPath + strPath));
-                    wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
-//                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
-//OutputDebugString(wstring(L"redirect markers 1: " + to_wstring(get<0>(nDiff)) + L" 2: " + to_wstring(get<1>(nDiff))));
-strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
-
-                    //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
-                    fs::path dst(strRootPath + strDst);
-OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
-
-                    fs::rename(src, dst, ec);
-                    if (ec == error_code())
-                        iStatus = 201;
-                    else
+                    if (pr.first == L"HTTP_DESTINATION")
                     {
-                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                        // "destination", "http://thomas-pc/sample/test1/"
+                        size_t nPos = pr.second.find(strHost);
+                        if (nPos != string::npos)
+                        {
+                            fs::path src(wstring(strRootPath + strPath));
+                            wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
+                            //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+                            //OutputDebugString(wstring(L"redirect markers 1: " + to_wstring(get<0>(nDiff)) + L" 2: " + to_wstring(get<1>(nDiff))));
+                            strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
+
+                            //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
+                            fs::path dst(strRootPath + strDst);
+                            OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+
+                            auto itFoundDest = fnGetDirAccess(dst.wstring());
+                            if (itFoundDest != mapAccess.end())
+                            {
+                                int iRWDest = fnGetReadWriteAccess(itFoundDest);
+                                if ((iRWDest & 2) == 2)
+                                {
+                                    fs::rename(src, dst, ec);
+                                    if (ec == error_code())
+                                        iStatus = 201;
+                                    else
+                                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                                }
+                            }
+                        }
+                        return true;
                     }
-                }
-                return true;
-            }
-            return false;
-        });
+                    return false;
+                });
+        }
         break;
 
     case 5: // DELETE
-        iStatus = 404;  // Not found
-        if (fs::exists(strRootPath + strPath, ec) && ec == error_code())
+        iStatus = 403;  // Forbidden
+        if ((iRW & 2) == 2)
         {
-            iStatus = 423;  // Locked
-        if ((fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
-        || (_wstat64(FN_STR(fs::path(strRootPath + strPath).wstring()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR))
+            iStatus = 404;  // Not found
+            if (fs::exists(strRootPath + strPath, ec) && ec == error_code())
             {
-                if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
-                    iStatus = 204;
-                else if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
-                    iStatus = 204;
+                iStatus = 423;  // Locked
+                if ((fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
+                    || (_wstat64(FN_STR(fs::path(strRootPath + strPath).wstring()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR))
+                {
+                    if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
+                        iStatus = 204;
+                    else if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+                        iStatus = 204;
+                    else
+                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing path\r\n").c_str());
+                }
                 else
-                    OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing path\r\n").c_str());
-            }
-            else
-            {
-                if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
-                    iStatus = 204;
-                else
-                    OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing file\r\n").c_str());
-            }
+                {
+                    if (fs::remove(fs::path(strRootPath + strPath), ec) == true && ec == error_code())
+                        iStatus = 204;
+                    else
+                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" removing file\r\n").c_str());
+                }
 
-            if (iStatus != 204)
-            {
-                XMLElement* respons = doc.NewElement("D:response");
-                respons->SetAttribute("xmlns:lp1", "DAV:");
-                element->InsertEndChild(respons);
+                if (iStatus != 204)
+                {
+                    XMLElement* respons = doc.NewElement("D:response");
+                    respons->SetAttribute("xmlns:lp1", "DAV:");
+                    element->InsertEndChild(respons);
 
-                XMLElement* href = doc.NewElement("D:href");
-                href->SetText(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri).c_str());
-                respons->InsertEndChild(href);
+                    XMLElement* href = doc.NewElement("D:href");
+                    href->SetText(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri).c_str());
+                    respons->InsertEndChild(href);
 
-                XMLElement* status = doc.NewElement("D:status");
-                status->SetText("HTTP/1.1 423 Locked");
-                respons->InsertEndChild(status);
+                    XMLElement* status = doc.NewElement("D:status");
+                    status->SetText("HTTP/1.1 423 Locked");
+                    respons->InsertEndChild(status);
 
-                XMLElement* error = doc.NewElement("D:error");
-                error->SetText("<d:lock-token-submitted/>");
-                respons->InsertEndChild(error);
+                    XMLElement* error = doc.NewElement("D:error");
+                    error->SetText("<d:lock-token-submitted/>");
+                    respons->InsertEndChild(error);
 
-                iStatus = 207;
-                vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
-                doc.Print(&streamer);
+                    iStatus = 207;
+                    vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
+                    doc.Print(&streamer);
+                }
             }
         }
         break;
 
     case 6: // LOCK
-    {
-//this_thread::sleep_for(chrono::milliseconds(30000));
-        string strOwner("unknown");
-        tinyxml2::XMLDocument xmlIn;
-        if (nContentSize > 0)
         {
-            stringstream ss;
-            copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
-            xmlIn.Parse(ss.str().c_str(), ss.str().size());
-            XmlIterate(xmlIn.RootElement(), treeXml);
-        }
+    //this_thread::sleep_for(chrono::milliseconds(30000));
+            string strOwner("unknown");
+            tinyxml2::XMLDocument xmlIn;
+            if (nContentSize > 0)
+            {
+                stringstream ss;
+                copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                xmlIn.Parse(ss.str().c_str(), ss.str().size());
+                XmlIterate(xmlIn.RootElement(), treeXml);
+            }
 
-        XMLElement* pElement = xmlIn.FirstChildElement("D:lockinfo");
-        if (pElement != nullptr)
-        {
-            pElement = pElement->FirstChildElement("D:owner");
+            XMLElement* pElement = xmlIn.FirstChildElement("D:lockinfo");
             if (pElement != nullptr)
             {
-                pElement = pElement->FirstChildElement("D:href");
+                pElement = pElement->FirstChildElement("D:owner");
                 if (pElement != nullptr)
-                    strOwner = pElement->GetText();
+                {
+                    pElement = pElement->FirstChildElement("D:href");
+                    if (pElement != nullptr)
+                        strOwner = pElement->GetText();
+                }
             }
-        }
 
-        uint64_t nNextLockToken = 1000;
-        int fd = _wopen(FN_STR((strModulePath + L"/.davlock")).c_str(), O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
-        //fstream fin(FN_STR(strModulePath + L"/.davlock"), ios::in | ios::binary);
-        //if (fin.is_open() == true)
-        if (fd != -1)
-        {
+            uint64_t nNextLockToken = 1000;
+            int fd = _wopen(FN_STR((strModulePath + L"/.davlock")).c_str(), O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
+            //fstream fin(FN_STR(strModulePath + L"/.davlock"), ios::in | ios::binary);
+            //if (fin.is_open() == true)
+            if (fd != -1)
+            {
 #if defined(_WIN32) || defined(_WIN64)
-            OVERLAPPED overlapvar = { 0 };
-            LockFileEx((HANDLE)_get_osfhandle(fd), LOCKFILE_EXCLUSIVE_LOCK, 0, UINT_MAX, 0, &overlapvar);
+                OVERLAPPED overlapvar = { 0 };
+                LockFileEx((HANDLE)_get_osfhandle(fd), LOCKFILE_EXCLUSIVE_LOCK, 0, UINT_MAX, 0, &overlapvar);
 #else
-            struct  flock   param;
-            param.l_type = F_WRLCK;
-            param.l_whence = SEEK_SET;
-            param.l_start = 0; //start of the file
-            param.l_len = 0; // 0 means end of the file
-            fcntl(fd, F_SETLKW, &param);
+                struct  flock   param;
+                param.l_type = F_WRLCK;
+                param.l_whence = SEEK_SET;
+                param.l_start = 0; //start of the file
+                param.l_len = 0; // 0 means end of the file
+                fcntl(fd, F_SETLKW, &param);
 #endif
-            unsigned long lLen = _lseek(fd, 0L, SEEK_END);
-            _lseek(fd, 0L, SEEK_SET);
+                unsigned long lLen = _lseek(fd, 0L, SEEK_END);
+                _lseek(fd, 0L, SEEK_SET);
 
-            unique_ptr<char[]> caBuf = make_unique<char[]>(lLen + 1);
-            memset(caBuf.get(), 0, lLen + 1);
-            _read(fd, caBuf.get(), lLen);
+                unique_ptr<char[]> caBuf = make_unique<char[]>(lLen + 1);
+                memset(caBuf.get(), 0, lLen + 1);
+                _read(fd, caBuf.get(), lLen);
 
-            //stringstream ss;
-            //copy(istreambuf_iterator<char>(fin), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
-            //fin.close();
+                //stringstream ss;
+                //copy(istreambuf_iterator<char>(fin), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                //fin.close();
 
-            //nNextLockToken = stoi(ss.str());
-            string strTemp(caBuf.get());
-            if (strTemp.empty() == false)
-                nNextLockToken = stoi(strTemp);
-            nNextLockToken++;
-            strTemp = to_string(nNextLockToken);
+                //nNextLockToken = stoi(ss.str());
+                string strTemp(caBuf.get());
+                if (strTemp.empty() == false)
+                    nNextLockToken = stoi(strTemp);
+                nNextLockToken++;
+                strTemp = to_string(nNextLockToken);
 
-            //fstream fout(FN_STR(strModulePath + L"/.davlock"), ios::out | ios::binary);
-            //if (fout.is_open() == true)
-            //{
-                //string strTmp = to_string(nNextLockToken);
-                //fout.write(strTmp.c_str(), strTmp.size());
-                //fout.close();
-            //}
-            _lseek(fd, 0L, SEEK_SET);
-            _write(fd, strTemp.c_str(), static_cast<unsigned int>(strTemp.size()));
+                //fstream fout(FN_STR(strModulePath + L"/.davlock"), ios::out | ios::binary);
+                //if (fout.is_open() == true)
+                //{
+                    //string strTmp = to_string(nNextLockToken);
+                    //fout.write(strTmp.c_str(), strTmp.size());
+                    //fout.close();
+                //}
+                _lseek(fd, 0L, SEEK_SET);
+                _write(fd, strTemp.c_str(), static_cast<unsigned int>(strTemp.size()));
 
 #if defined(_WIN32) || defined(_WIN64)
-            UnlockFileEx((HANDLE)_get_osfhandle(fd), 0, 0, 0, &overlapvar);
+                UnlockFileEx((HANDLE)_get_osfhandle(fd), 0, 0, 0, &overlapvar);
 #else
-            param.l_type = F_UNLCK;
-            param.l_whence = SEEK_SET;
-            param.l_start = 0; //start of the file
-            param.l_len = 0; // 0 means end of the file
-            fcntl(fd, F_SETLKW, &param);
+                param.l_type = F_UNLCK;
+                param.l_whence = SEEK_SET;
+                param.l_start = 0; //start of the file
+                param.l_len = 0; // 0 means end of the file
+                fcntl(fd, F_SETLKW, &param);
 #endif
-            _close(fd);
+                _close(fd);
+            }
+
+            tinyxml2::XMLDocument xmlOut;
+            xmlOut.InsertEndChild(xmlOut.NewDeclaration());               // <?xml version=\"1.0\" encoding=\"utf-8\" ?>
+            XMLElement* newEle = xmlOut.NewElement("D:prop");
+            newEle->SetAttribute("xmlns:D", "DAV:");
+            XMLNode* element = xmlOut.InsertEndChild(newEle);
+
+            XMLElement* lockDisc = xmlOut.NewElement("D:lockdiscovery");
+            element->InsertEndChild(lockDisc);
+            XMLElement* actLock = xmlOut.NewElement("D:activelock");
+            lockDisc->InsertEndChild(actLock);
+
+            XMLElement* lockTyp = xmlOut.NewElement("D:locktype");
+            actLock->InsertEndChild(lockTyp);
+            lockTyp->InsertEndChild(xmlOut.NewElement("D:write"));
+
+            XMLElement* lockScope = xmlOut.NewElement("D:lockscope");
+            actLock->InsertEndChild(lockScope);
+            lockScope->InsertEndChild(xmlOut.NewElement("D:exclusive"));
+
+            XMLElement* lockdepth = xmlOut.NewElement("D:depth");
+            lockdepth->SetText("infinity");
+            actLock->InsertEndChild(lockdepth);
+
+            XMLElement* owner = xmlOut.NewElement("D:owner");
+            actLock->InsertEndChild(owner);
+            XMLElement* href = xmlOut.NewElement("D:href");
+            href->SetText(strOwner.c_str());
+            owner->InsertEndChild(href);
+
+            XMLElement* timeout = xmlOut.NewElement("D:timeout");
+            timeout->SetText("Second-3600");
+            actLock->InsertEndChild(timeout);
+
+            XMLElement* lockTock = xmlOut.NewElement("D:locktoken");
+            actLock->InsertEndChild(lockTock);
+            //XMLElement* lockRoot = xmlOut.NewElement("D:lockroot");
+            //lockTock->InsertEndChild(lockRoot);
+            href = xmlOut.NewElement("D:href");
+            href->SetText(to_string(nNextLockToken).c_str());
+            lockTock->InsertEndChild(href);//lockRoot->InsertEndChild(href);
+
+            iStatus = 200;
+            vHeaderList.push_back(make_pair("Lock-Token", to_string(nNextLockToken)));
+            vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
+            //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
+            xmlOut.Print(&streamer);
         }
-
-        tinyxml2::XMLDocument xmlOut;
-        xmlOut.InsertEndChild(xmlOut.NewDeclaration());               // <?xml version=\"1.0\" encoding=\"utf-8\" ?>
-        XMLElement* newEle = xmlOut.NewElement("D:prop");
-        newEle->SetAttribute("xmlns:D", "DAV:");
-        XMLNode* element = xmlOut.InsertEndChild(newEle);
-
-        XMLElement* lockDisc = xmlOut.NewElement("D:lockdiscovery");
-        element->InsertEndChild(lockDisc);
-        XMLElement* actLock = xmlOut.NewElement("D:activelock");
-        lockDisc->InsertEndChild(actLock);
-
-        XMLElement* lockTyp = xmlOut.NewElement("D:locktype");
-        actLock->InsertEndChild(lockTyp);
-        lockTyp->InsertEndChild(xmlOut.NewElement("D:write"));
-
-        XMLElement* lockScope = xmlOut.NewElement("D:lockscope");
-        actLock->InsertEndChild(lockScope);
-        lockScope->InsertEndChild(xmlOut.NewElement("D:exclusive"));
-
-        XMLElement* lockdepth = xmlOut.NewElement("D:depth");
-        lockdepth->SetText("infinity");
-        actLock->InsertEndChild(lockdepth);
-
-        XMLElement* owner = xmlOut.NewElement("D:owner");
-        actLock->InsertEndChild(owner);
-        XMLElement* href = xmlOut.NewElement("D:href");
-        href->SetText(strOwner.c_str());
-        owner->InsertEndChild(href);
-
-        XMLElement* timeout = xmlOut.NewElement("D:timeout");
-        timeout->SetText("Second-3600");
-        actLock->InsertEndChild(timeout);
-
-        XMLElement* lockTock = xmlOut.NewElement("D:locktoken");
-        actLock->InsertEndChild(lockTock);
-        //XMLElement* lockRoot = xmlOut.NewElement("D:lockroot");
-        //lockTock->InsertEndChild(lockRoot);
-        href = xmlOut.NewElement("D:href");
-        href->SetText(to_string(nNextLockToken).c_str());
-        lockTock->InsertEndChild(href);//lockRoot->InsertEndChild(href);
-
-        iStatus = 200;
-        vHeaderList.push_back(make_pair("Lock-Token", to_string(nNextLockToken)));
-        vHeaderList.push_back(make_pair("Content-Type", "application/xml; charset=utf-8"));
-        //vHeaderList.push_back(make_pair("Cache-Control", "must-revalidate"));
-        xmlOut.Print(&streamer);
-    }
-    break;
+        break;
 
     case 7: // UNLOCK
         iStatus = 204;  // No Content - Normal success response
         break;
 
     case 8: // PUT
-    {
         iStatus = 403;  // Forbidden
 //OutputDebugString(wstring(L"PUT ContentSize: " + to_wstring(nContentSize) + L"\r\n").c_str());
-        fstream fout(fs::path(strRootPath + strPath), ios::out | ios::binary);
-        if (fout.is_open() == true)
+        if ((iRW & 2) == 2)
         {
-            if (nContentSize > 0)
+            fstream fout(fs::path(strRootPath + strPath), ios::out | ios::binary);
+            if (fout.is_open() == true)
             {
-                //while (streamIn.eof() == false)
-                copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(fout));
-            }
+                if (nContentSize > 0)
+                {
+                    //while (streamIn.eof() == false)
+                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(fout));
+                }
 
-            fout.close();
+                fout.close();
 //OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
-            iStatus = 201;
-            //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
-            vHeaderList.push_back(make_pair("Location" , string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
-            //vHeaderList.push_back(make_pair("Content-Length", "0"));
+                iStatus = 201;
+                //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
+                vHeaderList.push_back(make_pair("Location" , string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
+                //vHeaderList.push_back(make_pair("Content-Length", "0"));
+            }
+            else
+                OutputDebugString(wstring(L"PUT: Error opening destination file: " + std::to_wstring(errno) + L"\r\n").c_str());
         }
-        else
-            OutputDebugString(wstring(L"PUT: Error opening destination file: " + std::to_wstring(errno) + L"\r\n").c_str());
-    }
-    break;
+        break;
 
     case 9: // OPTION
         vHeaderList.push_back(make_pair("Allow", "OPTIONS, GET, HEAD, POST, PUT, DELETE, TRACE, COPY, MOVE, MKCOL, PROPFIND, PROPPATCH, LOCK, UNLOCK, ORDERPATCH"));
@@ -1120,89 +1206,93 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
         break;
 
     case 10:// GET
-    {
-        iStatus = 200;
-
-        int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
-        fstream fin(FN_STR(strRootPath + strPath), ios::in | ios::binary);
-        if (iRet == 0 && fin.is_open() == true)
+        iStatus = 403;  // Forbidden
+        if ((iRW & 1) == 1)
         {
-            stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
-            // Calc ETag
-            string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
+            iStatus = 200;
 
-            //vHeaderList.push_back(make_pair("Content-Type", strMineType));
-            vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
-            //vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
-            vHeaderList.push_back(make_pair("ETag", strEtag));
-            vHeaderList.push_back(make_pair("Content-Length", to_string(stFileInfo.st_size)));
-
-            string strHeader;
-            for (const auto& itItem : vHeaderList)
-                strHeader += itItem.first + ": " + itItem.second + "\r\n";
-            strHeader += "\r\n";
-
-            streamOut << strHeader;
-
-            //copy(istreambuf_iterator<char>(fin), istreambuf_iterator<char>(), ostreambuf_iterator<char>(cout));
-            unique_ptr<char> pBuf(new char[32768]);
-            while (fin.eof() == false)
+            int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            fstream fin(FN_STR(strRootPath + strPath), ios::in | ios::binary);
+            if (iRet == 0 && fin.is_open() == true)
             {
-                streamsize nRead = fin.read(pBuf.get(), 32768).gcount();
-                if (nRead > 0)
-                    streamOut.write(pBuf.get(), nRead);
-            }
-            streamOut.flush();
+                stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
+                // Calc ETag
+                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
 
-            fin.close();
+                //vHeaderList.push_back(make_pair("Content-Type", strMineType));
+                vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
+                //vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
+                vHeaderList.push_back(make_pair("ETag", strEtag));
+                vHeaderList.push_back(make_pair("Content-Length", to_string(stFileInfo.st_size)));
 
-            vHeaderList.clear();
-        }
-        else
-        {
-            iStatus = 404;
-            if(fin.is_open() == true)
+                string strHeader;
+                for (const auto& itItem : vHeaderList)
+                    strHeader += itItem.first + ": " + itItem.second + "\r\n";
+                strHeader += "\r\n";
+
+                streamOut << strHeader;
+
+                //copy(istreambuf_iterator<char>(fin), istreambuf_iterator<char>(), ostreambuf_iterator<char>(cout));
+                unique_ptr<char> pBuf(new char[32768]);
+                while (fin.eof() == false)
+                {
+                    streamsize nRead = fin.read(pBuf.get(), 32768).gcount();
+                    if (nRead > 0)
+                        streamOut.write(pBuf.get(), nRead);
+                }
+                streamOut.flush();
+
                 fin.close();
+
+                vHeaderList.clear();
+            }
+            else
+            {
+                iStatus = 404;
+                if(fin.is_open() == true)
+                    fin.close();
+            }
         }
-    }
-    break;
+        break;
 
     case 11:// HEAD
-    {
-        //this_thread::sleep_for(chrono::milliseconds(30000));
-        iStatus = 200;
-        //int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
-        //if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
-        if (fs::is_regular_file(strRootPath + strPath, ec) == true && ec == error_code())
+        iStatus = 403;  // Forbidden
+        if ((iRW & 1) == 1)
         {
-            fs::file_time_type ftime = fs::last_write_time(strRootPath + strPath);
-            std::time_t cftime = decltype(ftime)::clock::to_time_t(ftime); // assuming system_clock
+            //this_thread::sleep_for(chrono::milliseconds(30000));
+            iStatus = 200;
+            //int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            //if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
+            if (fs::is_regular_file(strRootPath + strPath, ec) == true && ec == error_code())
+            {
+                fs::file_time_type ftime = fs::last_write_time(strRootPath + strPath);
+                std::time_t cftime = decltype(ftime)::clock::to_time_t(ftime); // assuming system_clock
 
-            //stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
-                stringstream strLastModTime; strLastModTime << put_time(::gmtime(&cftime), "%a, %d %b %Y %H:%M:%S GMT");
-            // Calc ETag
-            size_t nFSize = fs::file_size(strRootPath + strPath);
-            string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(cftime) + ":" + to_string(nFSize)).getDigest();
+                //stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
+                    stringstream strLastModTime; strLastModTime << put_time(::gmtime(&cftime), "%a, %d %b %Y %H:%M:%S GMT");
+                // Calc ETag
+                size_t nFSize = fs::file_size(strRootPath + strPath);
+                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(cftime) + ":" + to_string(nFSize)).getDigest();
 
-            //vHeaderList.push_back(make_pair("Content-Type", strMineType));
-            vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
-            //vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
-            vHeaderList.push_back(make_pair("ETag", strEtag));
+                //vHeaderList.push_back(make_pair("Content-Type", strMineType));
+                vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
+                //vHeaderList.push_back(make_pair("Cache-Control", "private, must-revalidate"));
+                vHeaderList.push_back(make_pair("ETag", strEtag));
 
 /*                string strHeader;
-            for (const auto& itItem : vHeaderList)
-                strHeader += itItem.first + ": " + itItem.second + "\r\n";
-            //strHeader += "\r\n";
+                for (const auto& itItem : vHeaderList)
+                    strHeader += itItem.first + ": " + itItem.second + "\r\n";
+                //strHeader += "\r\n";
 
-            streamOut << strHeader;
-            streamOut.flush();
+                streamOut << strHeader;
+                streamOut.flush();
 
-            vHeaderList.clear();*/
+                vHeaderList.clear();*/
+            }
+            else
+                iStatus = 404;
         }
-        else
-            iStatus = 404;
-    }
-    break;
+        break;
 
     default:
         iStatus = 412;
@@ -1220,13 +1310,13 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
     if (iStatus != 200)
         vHeaderList.push_back(make_pair("status", to_string(iStatus)));
 
-    if (streamer.CStrSize() > 1)    // the Size from CStrSize is including the trailing 0
-        vHeaderList.push_back(make_pair("Content-Length", to_string(streamer.CStrSize() - 1)));
-    else
-        vHeaderList.push_back(make_pair("Content-Length", "0"));
-
     if (vHeaderList.size() > 0)
     {
+        if (streamer.CStrSize() > 1)    // the Size from CStrSize is including the trailing 0
+            vHeaderList.push_back(make_pair("Content-Length", to_string(streamer.CStrSize() - 1)));
+        else
+            vHeaderList.push_back(make_pair("Content-Length", "0"));
+
         string strHeader;
         for (const auto& itItem : vHeaderList)
             strHeader += itItem.first + ": " + itItem.second + "\r\n";
@@ -1252,10 +1342,14 @@ OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstrin
 
 int main(int argc, const char* argv[], char **envp)
 {
+    SrvParam SrvPara;
     wstring strModulePath = wstring(FILENAME_MAX, 0);
 #if defined(_WIN32) || defined(_WIN64)
     if (GetModuleFileName(NULL, &strModulePath[0], FILENAME_MAX) > 0)
         strModulePath.erase(strModulePath.find_last_of(L'\\') + 1); // Sollte der Backslash nicht gefunden werden wird der ganz String gelöscht
+
+    SrvPara.szDspName = L"´Webdav Server";
+    SrvPara.szDescrip = L"Webdav fastcgi Server by Thomas Hauck";
 #else
     string strTmpPath(FILENAME_MAX, 0);
     if (readlink(string("/proc/" + to_string(getpid()) + "/exe").c_str(), &strTmpPath[0], FILENAME_MAX) > 0)
@@ -1263,25 +1357,48 @@ int main(int argc, const char* argv[], char **envp)
     strModulePath = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(strTmpPath) + L"/";
 #endif
 
+    FastCgiServer fcgiServ([&](const PARAMETERLIST& lstParam, ostream& streamOut, istream& streamIn)
+    {
+        map<wstring, wstring> mapEnvList;
+        for (const auto& itParam : lstParam)
+            mapEnvList.emplace(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.first), wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.second));
+        return DoAction(strModulePath, mapEnvList, streamOut, streamIn);
+    });
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    SrvPara.szSrvName = L"WebdavServ";
+    SrvPara.fnStartCallBack = [&strModulePath, &fcgiServ]()
+    {
+        if (fcgiServ.Start("127.0.0.1", 1919) == false)
+            wcout << L"Error starting server, error no.:" << fcgiServ.GetError() << endl;
+    };
+
+    SrvPara.fnStopCallBack = [&fcgiServ]()
+    {
+        fcgiServ.Stop();
+    };
+
+    SrvPara.fnSignalCallBack = [&strModulePath]()
+    {
+    };
+
+//    return ServiceMain(argc, argv, SrvPara);
 
     if (argc > 1 && string(argv[1]).compare("-s") == 0)
     {
-        FastCgiServer fcgiServ([&](const PARAMETERLIST& lstParam, ostream& streamOut, istream& streamIn)
-        {
-            map<wstring, wstring> mapEnvList;
-            for (const auto& itParam : lstParam)
-                mapEnvList.emplace(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.first), wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.second));
-            return DoAction(strModulePath, mapEnvList, streamOut, streamIn);
-        });
-        fcgiServ.Start("127.0.0.1", 1994);
-
+        uint16_t nPort = 9010;
+        const char* szPost = getenv("DAV_FASTCGI_PORT");
+        if (szPost != nullptr)
+            nPort = std::stoi(std::string(szPost));
+        if (fcgiServ.Start("127.0.0.1", nPort) == false)
+            wcout << L"Error starting server, error no.:" << fcgiServ.GetError() << endl;
         //mutex mxBeenden;
         //unique_lock<mutex> lock(mxBeenden);
         //condition_variable m_cvBeenden;
         //m_cvBeenden.wait(lock, [&]() { return false; });
-
-        wcout << L"gestartet" << endl;
+        else
+            wcout << L"gestartet" << endl;
 
         const wchar_t caZeichen[] = L"\\|/-";
         int iIndex = 0;

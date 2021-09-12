@@ -14,3 +14,7 @@
 	path = md5
 	url = https://github.com/jianjieluo/md5.git
 	ignore = untracked
+[submodule "SrvLib"]
+	path = SrvLib
+	url = https://github.com/Tomenz/SrvLib.git
+	branch = master
