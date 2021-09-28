@@ -168,12 +168,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="ConfFile.cpp" />
     <ClCompile Include="FastCgi\FastCgi.cpp" />
     <ClCompile Include="md5\md5.cpp" />
     <ClCompile Include="tinyxml2\tinyxml2.cpp" />
     <ClCompile Include="webdav.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ConfFile.h" />
     <ClInclude Include="FastCgi\FastCgi.h" />
     <ClInclude Include="md5\md5.h" />
     <ClInclude Include="tinyxml2\tinyxml2.h" />

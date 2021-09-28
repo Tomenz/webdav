@@ -27,6 +27,9 @@
     <ClCompile Include="FastCgi\FastCgi.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="ConfFile.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="md5\md5.h">
@@ -36,6 +39,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="FastCgi\FastCgi.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="ConfFile.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

@@ -30,6 +30,7 @@ namespace fs = std::experimental::filesystem;
 namespace fs = std::experimental::filesystem;
 #endif
 
+#include "ConfFile.h"
 #include "SrvLib/Service.h"
 #include "tinyxml2/tinyxml2.h"
 #include "FastCgi/FastCgi.h"
@@ -375,7 +376,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                         if (isspace(strLine[0]) == false)
                         {
                             bool bExcluded = false;
-                            replace(begin(strLine), end(strLine), L'\\', L'/');
+                            replace(begin(strLine), end(strLine), '\\', '/');
                             size_t nPos = strLine.find(",");
                             if (nPos != string::npos)
                             {
@@ -1357,62 +1358,67 @@ int main(int argc, const char* argv[], char **envp)
     strModulePath = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(strTmpPath) + L"/";
 #endif
 
-    FastCgiServer fcgiServ([&](const PARAMETERLIST& lstParam, ostream& streamOut, istream& streamIn)
+    if (getenv("REQUEST_METHOD") == nullptr)
     {
-        map<wstring, wstring> mapEnvList;
-        for (const auto& itParam : lstParam)
-            mapEnvList.emplace(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.first), wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.second));
-        return DoAction(strModulePath, mapEnvList, streamOut, streamIn);
-    });
+        SrvPara.szSrvName = L"WebdavServ";
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////
+        deque<FastCgiServer> m_vServers;
 
-    SrvPara.szSrvName = L"WebdavServ";
-    SrvPara.fnStartCallBack = [&strModulePath, &fcgiServ]()
-    {
-        if (fcgiServ.Start("127.0.0.1", 1919) == false)
-            wcout << L"Error starting server, error no.:" << fcgiServ.GetError() << endl;
-    };
-
-    SrvPara.fnStopCallBack = [&fcgiServ]()
-    {
-        fcgiServ.Stop();
-    };
-
-    SrvPara.fnSignalCallBack = [&strModulePath]()
-    {
-    };
-
-//    return ServiceMain(argc, argv, SrvPara);
-
-    if (argc > 1 && string(argv[1]).compare("-s") == 0)
-    {
-        uint16_t nPort = 9010;
-        const char* szPost = getenv("DAV_FASTCGI_PORT");
-        if (szPost != nullptr)
-            nPort = std::stoi(std::string(szPost));
-        if (fcgiServ.Start("127.0.0.1", nPort) == false)
-            wcout << L"Error starting server, error no.:" << fcgiServ.GetError() << endl;
-        //mutex mxBeenden;
-        //unique_lock<mutex> lock(mxBeenden);
-        //condition_variable m_cvBeenden;
-        //m_cvBeenden.wait(lock, [&]() { return false; });
-        else
-            wcout << L"gestartet" << endl;
-
-        const wchar_t caZeichen[] = L"\\|/-";
-        int iIndex = 0;
-        while (_kbhit() == 0)
+        SrvPara.fnStartCallBack = [&strModulePath, &m_vServers]()
         {
-            wcout << L'\r' << caZeichen[iIndex++] /*<< L"  Sockets:" << setw(3) << BaseSocket::s_atRefCount << L"  SSL-Pumpen:" << setw(3) << SslTcpSocket::s_atAnzahlPumps << L"  HTTP-Connections:" << setw(3) << nHttpCon*/ << flush;
-            if (iIndex > 3) iIndex = 0;
-            this_thread::sleep_for(chrono::milliseconds(100));
-        }
+            ConfFile& conf = ConfFile::GetInstance(strModulePath + L"webdav.cfg");
+            vector<wstring> vListen = conf.get(L"Listen");
+            if (vListen.empty() == true)
+                vListen.push_back(L"127.0.0.1"), vListen.push_back(L"::1");
 
-        wcout << L"gestoppt" << endl;
+            map<string, vector<wstring>> mIpPortCombi;
+            for (const auto& strListen : vListen)
+            {
+                string strIp = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strListen);
+                vector<wstring> vPort = move(conf.get(L"Listen", strListen));
+                if (vPort.empty() == true)
+                    vPort.push_back(L"9010");
+                for (const auto& strPort : vPort)
+                {   // Default Werte setzen
+                    uint16_t nPort = 0;
+                    try { nPort = static_cast<uint16_t>(stoi(strPort)); }
+                    catch (const std::exception& /*ex*/) {}
 
-        fcgiServ.Stop();
-        return 0;
+                    if (mIpPortCombi.find(strIp) == end(mIpPortCombi))
+                        mIpPortCombi.emplace(strIp, vector<wstring>({ strPort }));
+                    else
+                        mIpPortCombi.find(strIp)->second.push_back(strPort);
+                    if (find_if(begin(m_vServers), end(m_vServers), [&nPort, &strIp](auto& CgiServer) { return CgiServer.GetPort() == nPort && CgiServer.GetBindAdresse() == strIp ? true : false; }) != end(m_vServers))
+                        continue;
+                    m_vServers.emplace_back(strIp, nPort, [&](const PARAMETERLIST& lstParam, ostream& streamOut, istream& streamIn)
+                        {
+                            map<wstring, wstring> mapEnvList;
+                            for (const auto& itParam : lstParam)
+                                mapEnvList.emplace(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.first), wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.second));
+                            return DoAction(strModulePath, mapEnvList, streamOut, streamIn);
+                        });
+                }
+            }
+
+            // Server starten und speichern
+            for (auto& CgiServer : m_vServers)            
+            {
+                if (CgiServer.Start() == false)
+                    wcout << L"Error starting server, error no.:" << CgiServer.GetError() << endl;
+            }
+        };
+
+        SrvPara.fnStopCallBack = [&m_vServers]()
+        {
+            for (auto& CgiServer : m_vServers)
+                CgiServer.Stop();
+        };
+
+        SrvPara.fnSignalCallBack = [&strModulePath]()
+        {
+        };
+
+        return ServiceMain(argc, argv, SrvPara);
     }
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -1433,10 +1439,10 @@ int main(int argc, const char* argv[], char **envp)
     //this_thread::sleep_for(chrono::milliseconds(30000));
     //#if defined(_WIN32) || defined(_WIN64)
     //#if defined(_DEBUG)
-    wstring strDebug;
-    for (auto& itHeader : mapEnvList)
-        strDebug += itHeader.first + L": " + itHeader.second + L"\r\n";
-    strDebug += L"\r\n";
+    //wstring strDebug;
+    //for (auto& itHeader : mapEnvList)
+    //    strDebug += itHeader.first + L": " + itHeader.second + L"\r\n";
+    //strDebug += L"\r\n";
     //OutputDebugString(strDebug.c_str());
     //#endif
     //#endif
