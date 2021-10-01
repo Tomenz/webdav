@@ -19,6 +19,7 @@ include_directories(${CMAKE_SOURCE_DIR}/tinyxml2)
 add_subdirectory(FastCgi)
 add_subdirectory(SocketLib)
 add_subdirectory(tinyxml2)
+add_subdirectory(SrvLib)
 
 if(UA_ENABLE_ENCRYPTION_OPENSSL)
     link_directories(${OPENSSL_LIB_DIR})
@@ -31,11 +32,13 @@ endif()
 set(targetSrc
         ${CMAKE_CURRENT_LIST_DIR}/webdav.cpp
         ${CMAKE_CURRENT_LIST_DIR}/md5/md5.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/ConfFile.cpp
 )
 add_executable(${PROJECT_NAME} ${targetSrc})
 target_link_libraries(${PROJECT_NAME} socketlib)
 target_link_libraries(${PROJECT_NAME} FastCgi)
 target_link_libraries(${PROJECT_NAME} tinyxml2)
+target_link_libraries(${PROJECT_NAME} srvlib)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 if(UA_ENABLE_ENCRYPTION_OPENSSL)
     target_link_libraries(${PROJECT_NAME} libcrypto)
