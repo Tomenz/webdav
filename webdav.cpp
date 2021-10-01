@@ -423,7 +423,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                         {
                             size_t nPos = strPath.rfind(L"/");
                             strPath.erase(nPos + 1 == strPath.size() ? nPos : nPos + 1);
-                            auto& itFound = mapAccess.find(strPath);
+                            const auto& itFound = mapAccess.find(strPath);
                             if (itFound != mapAccess.end() && *itFound != itAccess)
                             {
                                 for (auto& it : itFound->second)

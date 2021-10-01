@@ -7,9 +7,9 @@ CFLAGS = -Wall -O3 -std=c++17 -pthread -ffunction-sections -fdata-sections -lstd
 LDFLAGS = -Wl,--gc-sections -lpthread -static-libgcc -static-libstdc++ -lstdc++fs # -latomic
 
 INC_PATH = -I .
-DIRS = SocketLib FastCgi tinyxml2
-OBJLIBS = -l tinyxml2 -l fastcgi -l socketlib -l crypto -l ssl
-LIB_PATH = -L tinyxml2 -L SocketLib -L FastCgi
+DIRS = SocketLib FastCgi tinyxml2 SrvLib
+OBJLIBS = -l tinyxml2 -l fastcgi -l socketlib -l srvlib -l crypto -l ssl
+LIB_PATH = -L tinyxml2 -L SocketLib -L FastCgi -L SrvLib
 
 export CFLAGS
 #VPATH = md5
