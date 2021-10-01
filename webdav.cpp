@@ -317,7 +317,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         streamOut << strHeader;
         return 0;
     }
-    
+
     uint64_t nContentSize = 0;
     wstring strHost;
     wstring strPath;
@@ -365,7 +365,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
             if (fin.is_open() == true)
             {
                 mapAccess.clear();
-                std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>>::iterator itLastDir = mapAccess.end();                
+                std::map<std::wstring, std::vector<std::tuple<std::string, std::string, std::string>>>::iterator itLastDir = mapAccess.end();
                 while (fin.eof() == false)
                 {
                     std::string strLine;
@@ -1401,7 +1401,7 @@ int main(int argc, const char* argv[], char **envp)
             }
 
             // Server starten und speichern
-            for (auto& CgiServer : m_vServers)            
+            for (auto& CgiServer : m_vServers)
             {
                 if (CgiServer.Start() == false)
                     wcout << L"Error starting server, error no.:" << CgiServer.GetError() << endl;
