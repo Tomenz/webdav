@@ -715,7 +715,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
             if (strDepth == L"1" || strDepth == L"infinity")
             {
-                for (auto& p : fs::directory_iterator(strRootPath + strPath))
+                for (auto& p : fs::directory_iterator(strRootPath + strPath, ec))
                 {
                     if (p.path() == L".")
                         continue;
@@ -1266,13 +1266,13 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             //if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
             if (fs::is_regular_file(strRootPath + strPath, ec) == true && ec == error_code())
             {
-                fs::file_time_type ftime = fs::last_write_time(strRootPath + strPath);
+                fs::file_time_type ftime = fs::last_write_time(strRootPath + strPath, ec);
                 std::time_t cftime = decltype(ftime)::clock::to_time_t(ftime); // assuming system_clock
 
                 //stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                     stringstream strLastModTime; strLastModTime << put_time(::gmtime(&cftime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
-                size_t nFSize = fs::file_size(strRootPath + strPath);
+                size_t nFSize = fs::file_size(strRootPath + strPath, ec);
                 string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(cftime) + ":" + to_string(nFSize)).getDigest();
 
                 //vHeaderList.push_back(make_pair("Content-Type", strMineType));
