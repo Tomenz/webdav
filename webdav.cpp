@@ -140,8 +140,6 @@ auto _kbhit = []() -> int
 };
 #endif
 
-#pragma comment(lib, "SrvLib.lib")
-
 const static unordered_map<wstring, int> arMethoden = { { L"PROPFIND", 0 },{ L"PROPPATCH", 1 },{ L"MKCOL", 2 },{ L"COPY", 3 },{ L"MOVE", 4 },{ L"DELETE", 5 },{ L"LOCK", 6 },{ L"UNLOCK", 7 },{ L"PUT", 8 },{ L"OPTIONS", 9 },{ L"GET", 10 }, { L"HEAD", 11 } };
 
 template<class A, class B>
@@ -1350,7 +1348,7 @@ int main(int argc, const char* argv[], char **envp)
         strModulePath.erase(strModulePath.find_last_of(L'\\') + 1); // Sollte der Backslash nicht gefunden werden wird der ganz String gelöscht
 
     SrvPara.szDspName = L"´Webdav Server";
-    SrvPara.szDescrip = L"Webdav fastcgi Server by Thomas Hauck";
+    SrvPara.szDescribe = L"Webdav fastcgi Server by Thomas Hauck";
 #else
     string strTmpPath(FILENAME_MAX, 0);
     if (readlink(string("/proc/" + to_string(getpid()) + "/exe").c_str(), &strTmpPath[0], FILENAME_MAX) > 0)
