@@ -1,7 +1,11 @@
 /build/*
 /out/*
 /.vs/*
+.vscode/
 webdav.exe
+webdav.cfg
+.access
+.davlock
 *.user
 *.bak
 *.obj
