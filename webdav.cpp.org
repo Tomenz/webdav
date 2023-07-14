@@ -4,8 +4,6 @@
 // https://help.dreamhost.com/hc/en-us/articles/216473357-Accessing-WebDAV-with-Windows
 // https://support.microsoft.com/de-de/topic/update-zum-aktivieren-von-tls-1-1-und-tls-1-2-als-sichere-standardprotokolle-in-winhttp-in-windows-c4bd73d2-31d7-761e-0178-11268bb10392
 
-#define _HAS_STD_BYTE 0
-#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 #include <iostream>
 #include <map>
 #include <deque>
@@ -23,11 +21,9 @@
 #include <fcntl.h>
 
 #if defined(_WIN32) || defined(_WIN64)
-// #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
-// #include <experimental/filesystem>
-#include <filesystem>
-//namespace fs = std::experimental::filesystem;
-namespace fs = std::filesystem;
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
 #else
 #include <filesystem>
 #include <experimental/filesystem>
@@ -40,6 +36,9 @@ namespace fs = std::experimental::filesystem;
 #include "FastCgi/FastCgi.h"
 #include "md5/md5.h"
 #include "Base64.h"
+
+using namespace std;
+using namespace tinyxml2;
 
 #if defined(_WIN32) || defined(_WIN64)
 //#define WIN32_LEAN_AND_MEAN
@@ -85,6 +84,7 @@ namespace fs = std::experimental::filesystem;
 #include <Windows.h>
 #include <sys/utime.h>
 #define ConvertToByte(x) wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(x)
+// #define ConvertFromByte(x) x.wstring()
 #include <conio.h>
 #include <io.h>
 #define FN_STR(x) x
@@ -97,6 +97,7 @@ namespace fs = std::experimental::filesystem;
 #include <unistd.h>
 #include <utime.h>
 #define ConvertToByte(x) wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(x)
+// #define ConvertFromByte(x) wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(x.string());
 #define _stat64 stat64
 #define _wstat64 stat64
 #define _stat stat
@@ -141,9 +142,6 @@ auto _kbhit = []() -> int
 };
 #endif
 
-//using namespace std;
-using namespace tinyxml2;
-
 const static unordered_map<wstring, int> arMethoden = { { L"PROPFIND", 0 },{ L"PROPPATCH", 1 },{ L"MKCOL", 2 },{ L"COPY", 3 },{ L"MOVE", 4 },{ L"DELETE", 5 },{ L"LOCK", 6 },{ L"UNLOCK", 7 },{ L"PUT", 8 },{ L"OPTIONS", 9 },{ L"GET", 10 }, { L"HEAD", 11 } };
 
 template<class A, class B>
@@ -152,39 +150,6 @@ struct tree : std::vector<struct tree<A, B>>
     A Element;
     B Value;
 };
-
-std::wstring mbs2ws(const std::string src)
-{
-    size_t mbslen = mbstowcs(NULL, src.c_str(), 0);
-    if (mbslen == (size_t) -1) {
-        return L"";
-    }
-
-    std::wstring dst(mbslen, 0);
-
-    if (mbstowcs(&dst[0], src.c_str(), mbslen) == (size_t) -1) {
-        return L"";
-    }
-
-    return dst;
-}
-
-std::string ws2mbs(const std::wstring src)
-{
-    size_t wslen = wcstombs(NULL, src.c_str(), 0);
-    if (wslen == (size_t) -1) {
-        return "";
-    }
-
-    std::string dst(wslen, 0);
-
-    if (wcstombs(&dst[0], src.c_str(), wslen) == (size_t) -1) {
-        return "";
-    }
-
-    return dst;
-
-}
 
 wstring url_decode(const string& strSrc)
 {
@@ -335,7 +300,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     vector<pair<string, string>> vHeaderList = { { make_pair("X-Powerd-By", "webdav-cgi/0.1"), make_pair("DAV", "1,2") } };
 
     unordered_map<wstring, int>::const_iterator itMethode;
-    if (find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"REQUEST_METHOD" && (itMethode = arMethoden.find(pr.second)) != end(arMethoden)) ? true : false;  }) == end(mapEnvList))
+    if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"REQUEST_METHOD" && (itMethode = arMethoden.find(pr.second)) != end(arMethoden)) ? true : false;  }) == end(mapEnvList))
     {
 //#if defined(_WIN32) || defined(_WIN64)
         auto itMeth = mapEnvList.find(L"REQUEST_METHOD");
@@ -361,36 +326,22 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     string strHttp("http");
     wstring strAuthorization;
 
-    if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"HTTP_CONTENT_LENGTH" || pr.first == L"CONTENT_LENGTH"); }); it != end(mapEnvList))
-        nContentSize = stoll(it->second);
-    if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"HTTP_HOST"); }); it != end(mapEnvList))
-        strHost = it->second;
-    if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"PATH_INFO"); }); it != end(mapEnvList))
-    {
-        strPath = url_decode(ws2mbs(it->second));
+    find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"HTTP_CONTENT_LENGTH" || pr.first == L"CONTENT_LENGTH") ? nContentSize = stoll(pr.second), true : false; });
+    find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"HTTP_HOST") ? strHost = pr.second, true : false;  });
+    if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"PATH_INFO") ? strPath = url_decode(ConvertToByte(pr.second)), true : false;  }) != end(mapEnvList))
         OutputDebugString(wstring(L"PATH_INFO = " + strPath + L"\r\n").c_str());
-    }
-    if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"DOCUMENT_ROOT"); }); it != end(mapEnvList))
-        strRootPath = it->second;
-    if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"DAV_ROOT"); }); it != end(mapEnvList))
-    {
-        strRootPath = it->second;
-        replace(begin(strRootPath), end(strRootPath), L'\\', L'/');
-        OutputDebugString(wstring(L"DAV_ROOT = " + strRootPath + L"\r\n").c_str());
-    }
-    if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"REQUEST_URI"); }); it != end(mapEnvList))
-        strRequestUri = url_decode(ws2mbs(it->second));
-    if (find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"HTTPS");  }) != end(mapEnvList))
-        strHttp += "s";
-    if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"HTTP_AUTHORIZATION"); }); it != end(mapEnvList))
-    {
-        strAuthorization = it->second;
-        OutputDebugString(wstring(L"HTTP_AUTHORIZATION = " + strAuthorization + L"\r\n").c_str());
-    }
+    find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"DOCUMENT_ROOT") ? strRootPath = pr.second, true : false;  });
+    find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"DAV_ROOT") ? strRootPath = pr.second, true : false;  });
+    replace(begin(strRootPath), end(strRootPath), L'\\', L'/');
+    OutputDebugString(wstring(L"DAV_ROOT = " + strRootPath + L"\r\n").c_str());
+    find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"REQUEST_URI") ? strRequestUri = url_decode(ConvertToByte(pr.second)), true : false;  });
+    find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"HTTPS") ? strHttp += "s", true : false;  });
+    find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"HTTP_AUTHORIZATION") ? strAuthorization = pr.second, true : false;  });
+    OutputDebugString(wstring(L"HTTP_AUTHORIZATION = " + strAuthorization + L"\r\n").c_str());
 
     if (strPath.empty() == true)    // Kommt vor, wenn über FastCgi aufgerufen wird
     {
-        if (find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"SCRIPT_FILENAME") ? strPath = pr.second/*url_decode(ConvertToByte(pr.second))*/, true : false;  }) != end(mapEnvList))
+        if (find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr) { return (pr.first == L"SCRIPT_FILENAME") ? strPath = pr.second/*url_decode(ConvertToByte(pr.second))*/, true : false;  }) != end(mapEnvList))
             OutputDebugString(wstring(L"SCRIPT_FILENAME = " + strPath + L"\r\n").c_str());
     }
     OutputDebugString(wstring(L"ROOT+PATH = " + strRootPath + strPath + L"\r\n").c_str());
@@ -434,7 +385,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                                 std::transform(begin(strTmp), end(strTmp), begin(strTmp), [](char c) noexcept { return static_cast<char>(::tolower(c)); });
                                 bExcluded = strTmp.find("independent") != string::npos;
                             }
-                            auto prResult = mapAccess.emplace(mbs2ws(strLine), std::vector<std::tuple<std::string, std::string, std::string>>());
+                            auto prResult = mapAccess.emplace(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(strLine), std::vector<std::tuple<std::string, std::string, std::string>>());
                             if (prResult.second == true)
                             {
                                 itLastDir = prResult.first;
@@ -532,7 +483,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     {
         if (strAuthorization.substr(0, nPosSpace) == L"Basic")
         {
-            strCredential = Base64::Decode(ws2mbs(strAuthorization.substr(nPosSpace + 1)));
+            strCredential = Base64::Decode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strAuthorization.substr(nPosSpace + 1)));
             OutputDebugStringA(string("UserName&Password = " + strCredential + "\r\n").c_str());
 
             size_t nPos = strCredential.find(":");
@@ -574,7 +525,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 
         XMLElement* href = doc.NewElement("D:href");
         //newEle->SetText(string("http://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost) + strRef).c_str());
-        href->SetText(ws2mbs(strRef).c_str());
+        href->SetText(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRef).c_str());
 
         respons->InsertEndChild(href);
         XMLNode* propstat = respons->InsertEndChild(doc.NewElement("D:propstat"));
@@ -594,7 +545,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         {
             XMLElement* newEle = doc.NewElement(prItem.first.c_str());
             if (prItem.second.empty() == false)
-                newEle->SetText(ws2mbs(prItem.second).c_str());
+                newEle->SetText(ConvertToByte(prItem.second).c_str());
             prop->InsertEndChild(newEle);
         }
 
@@ -625,8 +576,8 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         error_code ec;
         struct _stat64 stFileInfo;
 
-        std::wstring strFName(mbs2ws(pItem.filename().string()));// wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(pItem.string());
-        int iRet = _wstat64(pItem.string().c_str(), &stFileInfo);
+        wstring strFName(pItem.filename().wstring());
+        int iRet = _wstat64(FN_STR(pItem.wstring()).c_str(), &stFileInfo);
 
         if ((fs::is_directory(pItem, ec) == true && ec == error_code())
         || (iRet == 0 && stFileInfo.st_mode & S_IFDIR))
@@ -644,7 +595,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 //                vPropertys.emplace_back("D:getcontentlength", to_wstring(fs::file_size(pItem, ec)));
             vPropertys.emplace_back("lp1:getcontentlength", to_wstring(stFileInfo.st_size));
             // Calc ETag
-            wstring strEtag = mbs2ws(MD5(pItem.string() + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
+            wstring strEtag = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(pItem.wstring()) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
             vPropertys.emplace_back("lp1:getetag", strEtag);
         }
 //            vPropertys.emplace_back("lp1:displayname", strFName.empty() == true ? L"/" : strFName);
@@ -686,7 +637,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         if (nContentSize > 0)
         {
             stringstream ss;
-            copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+            std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(ss));
 
             tinyxml2::XMLDocument xmlIn;
             xmlIn.Parse(ss.str().c_str(), ss.str().size());
@@ -772,7 +723,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     vector<pair<string, wstring>> vPropertys;
                     wstring strRef = strRequestUri + fnGetPathProp(p.path(), vPropertys);
                     bool bIsDir = ((fs::is_directory(p, ec) == true && ec == error_code())
-                                    || (_wstat64(p.path().string().c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR));
+                                    || (_wstat64(FN_STR(p.path().wstring()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR));
                     fnBuildRespons(element, strRef, bIsDir/*S_ISDIR(stFileInfo.st_mode)*/, vPropertys);
                 }
             }
@@ -821,7 +772,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 XMLElement* pElemHRef = doc.NewElement("D:href");
                 //pElemHRef->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath)).c_str());
                 //string strRef(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri));
-                string strRef(ws2mbs(strRequestUri));
+                string strRef(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri));
                 pElemHRef->SetText(strRef.c_str());
                 pElemResp->InsertEndChild(pElemHRef);
 
@@ -829,7 +780,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 if (nContentSize > 0)
                 {
                     stringstream ss;
-                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                    std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(ss));
                     /*while (streamIn.eof() == false)
                     {
                         char caBuffer[4096];
@@ -849,12 +800,12 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 {   // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
                     if (strProperty == "Z:Win32CreationTime" || strProperty == "Z:Win32LastAccessTime" || strProperty == "Z:Win32LastModifiedTime")
                     {
-                        tm tmTime = { 0,0,0,0,0,0,0,0,0 };
+                        tm tmTime{0,0,0,0,0,0,0,0,0,0,0};
                         stringstream ss(strValue);
                         ss >> get_time(&tmTime, "%a, %d %b %Y %H:%M:%S GMT");
 
                         struct _stat stFile;
-                        if (_stat(ws2mbs(strRootPath + strPath).c_str(), &stFile) == 0) // Alles OK
+                        if (_stat(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &stFile) == 0) // Alles OK
                         {
                             struct _utimbuf utTime;
                             utTime.actime = stFile.st_atime;
@@ -865,7 +816,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                             if (strProperty == "Z:Win32LastAccessTime")
                                 utTime.actime = _mkgmtime(&tmTime);
 
-                            if (_utime(ws2mbs(strRootPath + strPath).c_str(), &utTime) == 0)
+                            if (_utime(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath).c_str(), &utTime) == 0)
                                 return true;
                         }
                     }
@@ -956,36 +907,41 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         iStatus = 403;
         if ((iRW & 1) == 1)
         {
-            if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return pr.first == L"HTTP_DESTINATION"; }); it != end(mapEnvList))
-            {
-                // "destination", "http://thomas-pc/sample/test1/"
-                size_t nPos = it->second.find(strHost);
-                if (nPos != string::npos)
+            find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr)
                 {
-                    fs::path src(wstring(strRootPath + strPath));
-                    wstring strDst = url_decode(std::string(ws2mbs(it->second.substr(nPos + strHost.size()))));
-                    //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
-                    strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
-
-                    //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
-                    fs::path dst(strRootPath + strDst);
-
-                    auto itFoundDest = fnGetDirAccess(dst.wstring());
-                    if (itFoundDest != mapAccess.end())
+                    if (pr.first == L"HTTP_DESTINATION")
                     {
-                        int iRWDest = fnGetReadWriteAccess(itFoundDest);
-                        if ((iRWDest & 2) == 2)
+                        // "destination", "http://thomas-pc/sample/test1/"
+                        size_t nPos = pr.second.find(strHost);
+                        if (nPos != string::npos)
                         {
-                            error_code ec;
-                            fs::copy(src, dst, fs::copy_options::overwrite_existing | fs::copy_options::recursive, ec);
-                            if (ec == error_code())
-                                iStatus = 201;
-                            else
-                                OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" copy from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                            fs::path src(wstring(strRootPath + strPath));
+                            wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
+                            //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+                            strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
+
+                            //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
+                            fs::path dst(strRootPath + strDst);
+
+                            auto itFoundDest = fnGetDirAccess(dst.wstring());
+                            if (itFoundDest != mapAccess.end())
+                            {
+                                int iRWDest = fnGetReadWriteAccess(itFoundDest);
+                                if ((iRWDest & 2) == 2)
+                                {
+                                    error_code ec;
+                                    fs::copy(src, dst, fs::copy_options::overwrite_existing | fs::copy_options::recursive, ec);
+                                    if (ec == error_code())
+                                        iStatus = 201;
+                                    else
+                                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" copy from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                                }
+                            }
                         }
+                        return true;
                     }
-                }
-            }
+                    return false;
+                });
         }
         break;
 
@@ -993,37 +949,42 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         iStatus = 403;  // Forbidden
         if ((iRW & 1) == 1)
         {
-            if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return pr.first == L"HTTP_DESTINATION"; }); it != end(mapEnvList))
-            {
-                // "destination", "http://thomas-pc/sample/test1/"
-                size_t nPos = it->second.find(strHost);
-                if (nPos != string::npos)
+            find_if(begin(mapEnvList), end(mapEnvList), [&](auto pr)
                 {
-                    fs::path src(wstring(strRootPath + strPath));
-                    wstring strDst = url_decode(ws2mbs(it->second.substr(nPos + strHost.size())));
-                    //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
-                    //OutputDebugString(wstring(L"redirect markers 1: " + to_wstring(get<0>(nDiff)) + L" 2: " + to_wstring(get<1>(nDiff))));
-                    strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
-
-                    //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
-                    fs::path dst(strRootPath + strDst);
-                    OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
-
-                    auto itFoundDest = fnGetDirAccess(dst.wstring());
-                    if (itFoundDest != mapAccess.end())
+                    if (pr.first == L"HTTP_DESTINATION")
                     {
-                        int iRWDest = fnGetReadWriteAccess(itFoundDest);
-                        if ((iRWDest & 2) == 2)
+                        // "destination", "http://thomas-pc/sample/test1/"
+                        size_t nPos = pr.second.find(strHost);
+                        if (nPos != string::npos)
                         {
-                            fs::rename(src, dst, ec);
-                            if (ec == error_code())
-                                iStatus = 201;
-                            else
-                                OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                            fs::path src(wstring(strRootPath + strPath));
+                            wstring strDst = url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())));
+                            //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
+                            //OutputDebugString(wstring(L"redirect markers 1: " + to_wstring(get<0>(nDiff)) + L" 2: " + to_wstring(get<1>(nDiff))));
+                            strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
+
+                            //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
+                            fs::path dst(strRootPath + strDst);
+                            OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+
+                            auto itFoundDest = fnGetDirAccess(dst.wstring());
+                            if (itFoundDest != mapAccess.end())
+                            {
+                                int iRWDest = fnGetReadWriteAccess(itFoundDest);
+                                if ((iRWDest & 2) == 2)
+                                {
+                                    fs::rename(src, dst, ec);
+                                    if (ec == error_code())
+                                        iStatus = 201;
+                                    else
+                                        OutputDebugString(wstring(L"Error " + to_wstring(ec.value()) + L" move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                                }
+                            }
                         }
+                        return true;
                     }
-                }
-            }
+                    return false;
+                });
         }
         break;
 
@@ -1060,7 +1021,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     element->InsertEndChild(respons);
 
                     XMLElement* href = doc.NewElement("D:href");
-                    href->SetText(ws2mbs(strRequestUri).c_str());
+                    href->SetText(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRequestUri).c_str());
                     respons->InsertEndChild(href);
 
                     XMLElement* status = doc.NewElement("D:status");
@@ -1087,7 +1048,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             if (nContentSize > 0)
             {
                 stringstream ss;
-                copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(ss));
                 xmlIn.Parse(ss.str().c_str(), ss.str().size());
                 XmlIterate(xmlIn.RootElement(), treeXml);
             }
@@ -1225,14 +1186,14 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 if (nContentSize > 0)
                 {
                     //while (streamIn.eof() == false)
-                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(fout));
+                    std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(fout));
                 }
 
                 fout.close();
 //OutputDebugString(wstring(L"PUT Datei geschlossen\r\n").c_str());
                 iStatus = 201;
                 //vHeaderList.push_back(make_pair("Location", string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath))).c_str()));
-                vHeaderList.push_back(make_pair("Location" , string(strHttp + "://" + url_encode(ws2mbs(strHost + strRequestUri))).c_str()));
+                vHeaderList.push_back(make_pair("Location" , string(strHttp + "://" + url_encode(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri))).c_str()));
                 //vHeaderList.push_back(make_pair("Content-Length", "0"));
             }
             else
@@ -1258,7 +1219,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             {
                 stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
-                string strEtag = MD5(ws2mbs(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
+                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest();
 
                 //vHeaderList.push_back(make_pair("Content-Type", strMineType));
                 vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
@@ -1307,15 +1268,13 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             if (fs::is_regular_file(strRootPath + strPath, ec) == true && ec == error_code())
             {
                 fs::file_time_type ftime = fs::last_write_time(strRootPath + strPath, ec);
-                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(ftime - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
-                std::time_t cftime = std::chrono::system_clock::to_time_t(sctp);
-                //std::time_t cftime = decltype(ftime)::clock::to_time_t(ftime); // assuming system_clock
+                std::time_t cftime = decltype(ftime)::clock::to_time_t(ftime); // assuming system_clock
 
                 //stringstream strLastModTime; strLastModTime << put_time(::gmtime(&stFileInfo.st_mtime), "%a, %d %b %Y %H:%M:%S GMT");
                     stringstream strLastModTime; strLastModTime << put_time(::gmtime(&cftime), "%a, %d %b %Y %H:%M:%S GMT");
                 // Calc ETag
                 size_t nFSize = fs::file_size(strRootPath + strPath, ec);
-                string strEtag = MD5(ws2mbs(strRootPath + strPath) + ":" + to_string(cftime) + ":" + to_string(nFSize)).getDigest();
+                string strEtag = MD5(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strRootPath + strPath) + ":" + to_string(cftime) + ":" + to_string(nFSize)).getDigest();
 
                 //vHeaderList.push_back(make_pair("Content-Type", strMineType));
                 vHeaderList.push_back(make_pair("Last-Modified", strLastModTime.str()));
@@ -1416,7 +1375,7 @@ int main(int argc, const char* argv[], char **envp)
             map<string, vector<wstring>> mIpPortCombi;
             for (const auto& strListen : vListen)
             {
-                string strIp(ws2mbs(strListen));
+                string strIp = wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strListen);
                 vector<wstring> vPort = move(conf.get(L"Listen", strListen));
                 if (vPort.empty() == true)
                     vPort.push_back(L"9010");
@@ -1436,7 +1395,7 @@ int main(int argc, const char* argv[], char **envp)
                         {
                             map<wstring, wstring> mapEnvList;
                             for (const auto& itParam : lstParam)
-                                mapEnvList.emplace(mbs2ws(itParam.first), mbs2ws(itParam.second));
+                                mapEnvList.emplace(wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.first), wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(itParam.second));
                             return DoAction(strModulePath, mapEnvList, streamOut, streamIn);
                         });
                 }
