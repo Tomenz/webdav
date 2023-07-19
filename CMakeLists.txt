@@ -6,6 +6,8 @@ ADD_DEFINITIONS(-DUNICODE)
 ADD_DEFINITIONS(-D_UNICODE)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     ADD_DEFINITIONS(-DZLIB_WINAPI)
+    # Turn off Microsofts "security" warnings.
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CONSOLE _SCL_SECURE_NO_WARNINGS)
 else()
     # add_compile_options("$<$<CONFIG:Debug>: -O0>")
     SET(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3 -ggdb")

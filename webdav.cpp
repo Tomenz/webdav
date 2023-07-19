@@ -41,6 +41,11 @@ namespace fs = std::experimental::filesystem;
 #include "md5/md5.h"
 #include "Base64.h"
 
+std::wstring mbs2ws(const std::string src);
+std::string ws2mbs(const std::wstring src);
+std::wstring utf82ws(const std::string src);
+std::string ws2utf8(const std::wstring src);
+
 #if defined(_WIN32) || defined(_WIN64)
 //#define WIN32_LEAN_AND_MEAN
 #define NOGDICAPMASKS
@@ -84,10 +89,12 @@ namespace fs = std::experimental::filesystem;
 #define NOMCX
 #include <Windows.h>
 #include <sys/utime.h>
-#define ConvertToByte(x) wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(x)
 #include <conio.h>
 #include <io.h>
+#define ConvertToByte(x) ws2utf8(x)
 #define FN_STR(x) x
+#define NATIV_STR(x) x.wstring()
+#define WsFromNativ(x) x
 #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
 #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
 #else
@@ -96,7 +103,6 @@ namespace fs = std::experimental::filesystem;
 #include <sys/stat.h>
 #include <unistd.h>
 #include <utime.h>
-#define ConvertToByte(x) wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(x)
 #define _stat64 stat64
 #define _wstat64 stat64
 #define _stat stat
@@ -111,7 +117,10 @@ namespace fs = std::experimental::filesystem;
 #define _lseek lseek
 #define _S_IFDIR S_IFDIR
 #define _S_IFREG S_IFREG
-#define FN_STR(x) wstring_convert<codecvt_utf8<wchar_t>, wchar_t>().to_bytes(x)
+#define ConvertToByte(x) x
+#define FN_STR(x) ws2utf8(x)
+#define NATIV_STR(x) x.string()
+#define WsFromNativ(x) utf82ws(x)
 extern void OutputDebugString(const wchar_t* pOut);
 extern void OutputDebugStringA(const char* pOut);
 auto _kbhit = []() -> int
@@ -184,6 +193,30 @@ std::string ws2mbs(const std::wstring src)
 
     return dst;
 
+}
+
+std::wstring utf82ws(const std::string src)
+{
+    std::string prev_loc = std::setlocale(LC_ALL, nullptr);
+    std::setlocale(LC_ALL, "en_US.UTF-8");
+
+    std::wstring strRet = mbs2ws(src);
+
+    std::setlocale(LC_ALL, prev_loc.c_str());
+
+    return strRet;
+}
+
+std::string ws2utf8(const std::wstring src)
+{
+    std::string prev_loc = std::setlocale(LC_ALL, nullptr);
+    std::setlocale(LC_ALL, "en_US.UTF-8");
+
+    std::string strRet = ws2mbs(src);
+
+    std::setlocale(LC_ALL, prev_loc.c_str());
+
+    return strRet;
 }
 
 wstring url_decode(const string& strSrc)
@@ -390,8 +423,11 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 
     if (strPath.empty() == true)    // Kommt vor, wenn über FastCgi aufgerufen wird
     {
-        if (find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"SCRIPT_FILENAME") ? strPath = pr.second/*url_decode(ConvertToByte(pr.second))*/, true : false;  }) != end(mapEnvList))
+        if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"SCRIPT_FILENAME");  }); it != end(mapEnvList))
+        {
+            strPath = it->second/*url_decode(ConvertToByte(pr.second))*/;
             OutputDebugString(wstring(L"SCRIPT_FILENAME = " + strPath + L"\r\n").c_str());
+        }
     }
     OutputDebugString(wstring(L"ROOT+PATH = " + strRootPath + strPath + L"\r\n").c_str());
 
@@ -574,7 +610,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 
         XMLElement* href = doc.NewElement("D:href");
         //newEle->SetText(string("http://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost) + strRef).c_str());
-        href->SetText(ws2mbs(strRef).c_str());
+        href->SetText(ws2utf8(strRef).c_str());
 
         respons->InsertEndChild(href);
         XMLNode* propstat = respons->InsertEndChild(doc.NewElement("D:propstat"));
@@ -625,8 +661,8 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         error_code ec;
         struct _stat64 stFileInfo;
 
-        std::wstring strFName(mbs2ws(pItem.filename().string()));// wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(pItem.string());
-        int iRet = _wstat64(pItem.string().c_str(), &stFileInfo);
+        std::wstring strFName(WsFromNativ(NATIV_STR(pItem.filename())));// wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(pItem.string());
+        int iRet = _wstat64(NATIV_STR(pItem).c_str(), &stFileInfo);
 
         if ((fs::is_directory(pItem, ec) == true && ec == error_code())
         || (iRet == 0 && stFileInfo.st_mode & S_IFDIR))
@@ -644,7 +680,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 //                vPropertys.emplace_back("D:getcontentlength", to_wstring(fs::file_size(pItem, ec)));
             vPropertys.emplace_back("lp1:getcontentlength", to_wstring(stFileInfo.st_size));
             // Calc ETag
-            wstring strEtag = mbs2ws(MD5(pItem.string() + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
+            wstring strEtag = mbs2ws(MD5(ConvertToByte(NATIV_STR(pItem)) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
             vPropertys.emplace_back("lp1:getetag", strEtag);
         }
 //            vPropertys.emplace_back("lp1:displayname", strFName.empty() == true ? L"/" : strFName);
@@ -740,7 +776,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
     }
 }*/
         if ((fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
-        || (_wstat64(FN_STR(fs::path(strRootPath + strPath).wstring()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR))
+        || (_wstat64(FN_STR((strRootPath + strPath)).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR))
         {
             //if (strPath.back() != L'/')
             //    strPath += L'/';
@@ -772,7 +808,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     vector<pair<string, wstring>> vPropertys;
                     wstring strRef = strRequestUri + fnGetPathProp(p.path(), vPropertys);
                     bool bIsDir = ((fs::is_directory(p, ec) == true && ec == error_code())
-                                    || (_wstat64(p.path().string().c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR));
+                                    || (_wstat64(NATIV_STR(p.path()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR));
                     fnBuildRespons(element, strRef, bIsDir/*S_ISDIR(stFileInfo.st_mode)*/, vPropertys);
                 }
             }
@@ -849,7 +885,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 {   // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
                     if (strProperty == "Z:Win32CreationTime" || strProperty == "Z:Win32LastAccessTime" || strProperty == "Z:Win32LastModifiedTime")
                     {
-                        tm tmTime = { 0,0,0,0,0,0,0,0,0 };
+                        struct tm tmTime = { 0,0,0,0,0,0,0,0,0 };
                         stringstream ss(strValue);
                         ss >> get_time(&tmTime, "%a, %d %b %Y %H:%M:%S GMT");
 
@@ -1036,7 +1072,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             {
                 iStatus = 423;  // Locked
                 if ((fs::is_directory(strRootPath + strPath, ec) == true && ec == error_code())
-                    || (_wstat64(FN_STR(fs::path(strRootPath + strPath).wstring()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR))
+                    || (_wstat64(FN_STR((strRootPath + strPath)).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR))
                 {
                     if (fs::remove_all(fs::path(strRootPath + strPath), ec) != static_cast<uintmax_t>(-1) && ec == error_code())
                         iStatus = 204;
@@ -1252,7 +1288,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         {
             iStatus = 200;
 
-            int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            int iRet = _wstat64(FN_STR((strRootPath + strPath)).c_str(), &stFileInfo);
             fstream fin(FN_STR(strRootPath + strPath), ios::in | ios::binary);
             if (iRet == 0 && fin.is_open() == true)
             {
@@ -1302,7 +1338,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         {
             //this_thread::sleep_for(chrono::milliseconds(30000));
             iStatus = 200;
-            //int iRet = _wstat64(FN_STR(wstring(strRootPath + strPath)).c_str(), &stFileInfo);
+            //int iRet = _wstat64(FN_STR((strRootPath + strPath)).c_str(), &stFileInfo);
             //if (iRet == 0 && S_ISREG(stFileInfo.st_mode) == true)
             if (fs::is_regular_file(strRootPath + strPath, ec) == true && ec == error_code())
             {
@@ -1436,7 +1472,7 @@ int main(int argc, const char* argv[], char **envp)
                         {
                             map<wstring, wstring> mapEnvList;
                             for (const auto& itParam : lstParam)
-                                mapEnvList.emplace(mbs2ws(itParam.first), mbs2ws(itParam.second));
+                                mapEnvList.emplace(mbs2ws(itParam.first), utf82ws(itParam.second));
                             return DoAction(strModulePath, mapEnvList, streamOut, streamIn);
                         });
                 }
