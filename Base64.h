@@ -62,10 +62,10 @@ public:
             if (++nPos, ++nIndex == 4)
             {
                 nIndex = 0;
-                char c1 = static_cast<char>(base64chr.find(strInput[nPos - 4]));
-                char c2 = static_cast<char>(base64chr.find(strInput[nPos - 3]));
-                char c3 = static_cast<char>(base64chr.find(strInput[nPos - 2]));
-                char c4 = static_cast<char>(base64chr.find(strInput[nPos - 1]));
+                const char c1 = static_cast<char>(base64chr.find(strInput[nPos - 4]));
+                const char c2 = static_cast<char>(base64chr.find(strInput[nPos - 3]));
+                const char c3 = static_cast<char>(base64chr.find(strInput[nPos - 2]));
+                const char c4 = static_cast<char>(base64chr.find(strInput[nPos - 1]));
 
                 strRet += (c1 << 2) + ((c2 & 0x30) >> 4);
                 strRet += ((c2 & 0xf) << 4) + ((c3 & 0x3c) >> 2);
@@ -78,11 +78,11 @@ public:
 
         if (nIndex)
         {
-            size_t nOffset = 4 - nIndex;
-            char c1 = static_cast<char>(base64chr.find(strInput[nPos + nOffset - 4]));
-            char c2 = static_cast<char>(nIndex > 1 ? base64chr.find(strInput[nPos + nOffset - 3]) : 0);
-            char c3 = static_cast<char>(nIndex > 2 ? base64chr.find(strInput[nPos + nOffset - 2]) : 0);
-            char c4 = static_cast<char>(0);
+            const size_t nOffset = 4 - nIndex;
+            const char c1 = static_cast<char>(base64chr.find(strInput[nPos + nOffset - 4]));
+            const char c2 = static_cast<char>(nIndex > 1 ? base64chr.find(strInput[nPos + nOffset - 3]) : 0);
+            const char c3 = static_cast<char>(nIndex > 2 ? base64chr.find(strInput[nPos + nOffset - 2]) : 0);
+            const char c4 = static_cast<char>(0);
 
             strRet += (c1 << 2) + ((c2 & 0x30) >> 4);
             if (((c2 & 0xf) << 4) + ((c3 & 0x3c) >> 2) != 0)

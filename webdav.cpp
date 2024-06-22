@@ -164,7 +164,7 @@ struct tree : std::vector<struct tree<A, B>>
 
 std::wstring mbs2ws(const std::string src)
 {
-    size_t mbslen = mbstowcs(NULL, src.c_str(), 0);
+    const size_t mbslen = mbstowcs(NULL, src.c_str(), 0);
     if (mbslen == (size_t) -1) {
         return L"";
     }
@@ -180,7 +180,7 @@ std::wstring mbs2ws(const std::string src)
 
 std::string ws2mbs(const std::wstring src)
 {
-    size_t wslen = wcstombs(NULL, src.c_str(), 0);
+    const size_t wslen = wcstombs(NULL, src.c_str(), 0);
     if (wslen == (size_t) -1) {
         return "";
     }
@@ -197,7 +197,7 @@ std::string ws2mbs(const std::wstring src)
 
 std::wstring utf82ws(const std::string src)
 {
-    std::string prev_loc = std::setlocale(LC_ALL, nullptr);
+    const std::string prev_loc = std::setlocale(LC_ALL, nullptr);
     std::setlocale(LC_ALL, "en_US.UTF-8");
 
     std::wstring strRet = mbs2ws(src);
@@ -209,7 +209,7 @@ std::wstring utf82ws(const std::string src)
 
 std::string ws2utf8(const std::wstring src)
 {
-    std::string prev_loc = std::setlocale(LC_ALL, nullptr);
+    const std::string prev_loc = std::setlocale(LC_ALL, nullptr);
     std::setlocale(LC_ALL, "en_US.UTF-8");
 
     std::string strRet = ws2mbs(src);
@@ -222,7 +222,7 @@ std::string ws2utf8(const std::wstring src)
 wstring url_decode(const string& strSrc)
 {
     wstring ws;
-    size_t nLen = strSrc.size();
+    const size_t nLen = strSrc.size();
     wchar_t wch = 0;
     int nAnzParts = 0;
     for (size_t n = 0; n < nLen; ++n)
@@ -234,8 +234,8 @@ wstring url_decode(const string& strSrc)
             {
                 return ws;
             }
-            char Nipple1 = strSrc.at(n + 1) - (strSrc.at(n + 1) <= '9' ? '0' : (strSrc.at(n + 1) <= 'F' ? 'A' : 'a') - 10);
-            char Nipple2 = strSrc.at(n + 2) - (strSrc.at(n + 2) <= '9' ? '0' : (strSrc.at(n + 2) <= 'F' ? 'A' : 'a') - 10);
+            const char Nipple1 = strSrc.at(n + 1) - (strSrc.at(n + 1) <= '9' ? '0' : (strSrc.at(n + 1) <= 'F' ? 'A' : 'a') - 10);
+            const char Nipple2 = strSrc.at(n + 2) - (strSrc.at(n + 2) <= '9' ? '0' : (strSrc.at(n + 2) <= 'F' ? 'A' : 'a') - 10);
             chr = 16 * Nipple1 + Nipple2;
             n += 2;
 
@@ -276,7 +276,7 @@ string url_encode(const string& value)
 
     for (string::const_iterator i = value.begin(), n = value.end(); i != n; ++i)
     {
-        string::value_type c = (*i);
+        const string::value_type c = (*i);
 
         // Keep alphanumeric and other accepted characters intact
         if ((c > 32 && c < 127 && isalnum(c)) || c == L'-' || c == L'_' || c == L'.' || c == L'~' || c == L'/' || c == L':' || c == L'?' || c == L'&')
@@ -318,7 +318,7 @@ tuple<size_t, size_t, size_t> FindRedirectMarker(wstring strA, wstring strB)
         nStrt += 1 + tokenA[n].size();
     }
     return make_tuple(0, 0, 0);*/
-    size_t nPos = strA.find(strB);
+    const size_t nPos = strA.find(strB);
     return make_tuple(0, nPos, 0);
 }
 
@@ -326,8 +326,8 @@ void XmlIterate(const XMLElement* elm, tree<string, string>& treeXml, deque<pair
 {
     for (const XMLAttribute* attr = elm->FirstAttribute(); attr; attr = attr->Next())
     {
-        string pAttrName = attr->Name() != nullptr ? attr->Name() : "";
-        string pAttrValue = attr->Value() != nullptr ? attr->Value() : "";
+        const string pAttrName = attr->Name() != nullptr ? attr->Name() : "";
+        const string pAttrValue = attr->Value() != nullptr ? attr->Value() : "";
         //OutputDebugStringA(string("AttributName: " + pAttrName + ", AttribureValue: " + pAttrValue + "\r\n").c_str());
 
         if (pAttrName.substr(0, 6) == "xmlns:")
@@ -340,8 +340,8 @@ void XmlIterate(const XMLElement* elm, tree<string, string>& treeXml, deque<pair
     }
 
     string pElemName = elm->Name() != nullptr ? elm->Name() : "";
-    string pElemValue = elm->GetText() != nullptr ? elm->GetText() : "";
-    size_t nPos = pElemName.find_first_of(":");
+    const string pElemValue = elm->GetText() != nullptr ? elm->GetText() : "";
+    const size_t nPos = pElemName.find_first_of(":");
     if (nPos != string::npos)
     {
         auto itNs = find_if(begin(queXmlNs), end(queXmlNs), [pElemName, nPos](auto item) { return item.first == pElemName.substr(0, nPos) ? true : false; });
@@ -442,7 +442,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 
     {
         struct _stat64 stFileInfo;
-        int iRet = _wstat64(FN_STR((strModulePath + L"/.access")).c_str(), &stFileInfo);
+        const int iRet = _wstat64(FN_STR((strModulePath + L"/.access")).c_str(), &stFileInfo);
         //OutputDebugStringA(std::string("ret: " + std::to_string(iRet) + ", difftime:" + std::to_string(difftime(stFileInfo.st_mtime, tLastWriteTime)) + "\r\n").c_str());
         if (iRet != 0 || difftime(stFileInfo.st_mtime, tLastWriteTime) > 0)
         {
@@ -462,7 +462,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                         {
                             bool bExcluded = false;
                             replace(begin(strLine), end(strLine), '\\', '/');
-                            size_t nPos = strLine.find(",");
+                            const size_t nPos = strLine.find(",");
                             if (nPos != string::npos)
                             {
                                 string strTmp = strLine.substr(nPos + 1);
@@ -506,7 +506,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                         std::wstring strPath = itAccess.first;
                         while (strPath.size() > strRootPath.size() && strPath != strRootPath)
                         {
-                            size_t nPos = strPath.rfind(L"/");
+                            const size_t nPos = strPath.rfind(L"/");
                             strPath.erase(nPos + 1 == strPath.size() ? nPos : nPos + 1);
                             const auto& itFound = mapAccess.find(strPath);
                             if (itFound != mapAccess.end() && *itFound != itAccess)
@@ -563,7 +563,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     }
 
     string strCredential;
-    string::size_type nPosSpace = strAuthorization.find(L' ');
+    const string::size_type nPosSpace = strAuthorization.find(L' ');
     if (nPosSpace != string::npos)
     {
         if (strAuthorization.substr(0, nPosSpace) == L"Basic")
@@ -571,7 +571,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
             strCredential = Base64::Decode(ws2mbs(strAuthorization.substr(nPosSpace + 1)));
             OutputDebugStringA(string("UserName&Password = " + strCredential + "\r\n").c_str());
 
-            size_t nPos = strCredential.find(":");
+            const size_t nPos = strCredential.find(":");
             std::transform(begin(strCredential), begin(strCredential) + nPos, begin(strCredential), [](char c) noexcept { return static_cast<char>(::tolower(c)); });
         }
     }
@@ -594,7 +594,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         return iRet;
     };
 
-    int iRW = fnGetReadWriteAccess(itFound);
+    const int iRW = fnGetReadWriteAccess(itFound);
     if (iRW == 0)
     {
         fnSendNotAuthenticate();
@@ -662,7 +662,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         struct _stat64 stFileInfo;
 
         std::wstring strFName(WsFromNativ(NATIV_STR(pItem.filename())));// wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().from_bytes(pItem.string());
-        int iRet = _wstat64(NATIV_STR(pItem).c_str(), &stFileInfo);
+        const int iRet = _wstat64(NATIV_STR(pItem).c_str(), &stFileInfo);
 
         if ((fs::is_directory(pItem, ec) == true && ec == error_code())
         || (iRet == 0 && stFileInfo.st_mode & S_IFDIR))
@@ -680,7 +680,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
 //                vPropertys.emplace_back("D:getcontentlength", to_wstring(fs::file_size(pItem, ec)));
             vPropertys.emplace_back("lp1:getcontentlength", to_wstring(stFileInfo.st_size));
             // Calc ETag
-            wstring strEtag = mbs2ws(MD5(ConvertToByte(NATIV_STR(pItem)) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
+            const wstring strEtag = mbs2ws(MD5(ConvertToByte(NATIV_STR(pItem)) + ":" + to_string(stFileInfo.st_mtime) + ":" + to_string(stFileInfo.st_size)).getDigest());
             vPropertys.emplace_back("lp1:getetag", strEtag);
         }
 //            vPropertys.emplace_back("lp1:displayname", strFName.empty() == true ? L"/" : strFName);
@@ -787,7 +787,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             bool bNoRoot = false;
             if (find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"HTTP_DEPTH") ? strDepth = pr.second, true : false;  }) != end(mapEnvList))
             {
-                size_t nPos = strDepth.find(L",noroot");
+                const size_t nPos = strDepth.find(L",noroot");
                 if (nPos != string::npos)
                     bNoRoot = true, strDepth.erase(nPos);
             }
@@ -806,8 +806,8 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     if (p.path() == L".")
                         continue;
                     vector<pair<string, wstring>> vPropertys;
-                    wstring strRef = strRequestUri + fnGetPathProp(p.path(), vPropertys);
-                    bool bIsDir = ((fs::is_directory(p, ec) == true && ec == error_code())
+                    const wstring strRef = strRequestUri + fnGetPathProp(p.path(), vPropertys);
+                    const bool bIsDir = ((fs::is_directory(p, ec) == true && ec == error_code())
                                     || (_wstat64(NATIV_STR(p.path()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR));
                     fnBuildRespons(element, strRef, bIsDir/*S_ISDIR(stFileInfo.st_mode)*/, vPropertys);
                 }
@@ -820,7 +820,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         }
         else
         {
-            fs::path pFile(strRootPath + strPath);
+            const fs::path pFile(strRootPath + strPath);
             if (fs::exists(pFile, ec) == true && ec == error_code())
             {
                 vector<pair<string, wstring>> vPropertys;
@@ -857,7 +857,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 XMLElement* pElemHRef = doc.NewElement("D:href");
                 //pElemHRef->SetText(string(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strReqOffstr + strPath)).c_str());
                 //string strRef(strHttp + "://" + wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>().to_bytes(strHost + strRequestUri));
-                string strRef(ws2mbs(strRequestUri));
+                const string strRef(ws2mbs(strRequestUri));
                 pElemHRef->SetText(strRef.c_str());
                 pElemResp->InsertEndChild(pElemHRef);
 
@@ -908,7 +908,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                     else if (strProperty == "Z:Win32FileAttributes")
                     {
 #if defined(_WIN32) || defined(_WIN64)
-                        DWORD dwAttr = stoi(strValue, 0, 16);
+                        const DWORD dwAttr = stoi(strValue, 0, 16);
                         if (SetFileAttributes(wstring(strRootPath + strPath).c_str(), dwAttr) != 0)
                             return true;
 #endif
@@ -995,21 +995,21 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return pr.first == L"HTTP_DESTINATION"; }); it != end(mapEnvList))
             {
                 // "destination", "http://thomas-pc/sample/test1/"
-                size_t nPos = it->second.find(strHost);
+                const size_t nPos = it->second.find(strHost);
                 if (nPos != string::npos)
                 {
-                    fs::path src(wstring(strRootPath + strPath));
+                    const fs::path src(wstring(strRootPath + strPath));
                     wstring strDst = url_decode(std::string(ws2mbs(it->second.substr(nPos + strHost.size()))));
                     //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
                     strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
 
                     //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
-                    fs::path dst(strRootPath + strDst);
+                    const fs::path dst(strRootPath + strDst);
 
                     auto itFoundDest = fnGetDirAccess(dst.wstring());
                     if (itFoundDest != mapAccess.end())
                     {
-                        int iRWDest = fnGetReadWriteAccess(itFoundDest);
+                        const int iRWDest = fnGetReadWriteAccess(itFoundDest);
                         if ((iRWDest & 2) == 2)
                         {
                             error_code ec;
@@ -1032,23 +1032,23 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return pr.first == L"HTTP_DESTINATION"; }); it != end(mapEnvList))
             {
                 // "destination", "http://thomas-pc/sample/test1/"
-                size_t nPos = it->second.find(strHost);
+                const size_t nPos = it->second.find(strHost);
                 if (nPos != string::npos)
                 {
-                    fs::path src(wstring(strRootPath + strPath));
+                    const fs::path src(wstring(strRootPath + strPath));
                     wstring strDst = url_decode(ws2mbs(it->second.substr(nPos + strHost.size())));
                     //                        strDst.replace(get<0>(nDiff), get<1>(nDiff) - get<0>(nDiff), strPath.substr(get<0>(nDiff), get<2>(nDiff) - get<0>(nDiff)));
                     //OutputDebugString(wstring(L"redirect markers 1: " + to_wstring(get<0>(nDiff)) + L" 2: " + to_wstring(get<1>(nDiff))));
                     strDst.replace(get<0>(nDiff), get<1>(nDiff), L"");
 
                     //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
-                    fs::path dst(strRootPath + strDst);
+                    const fs::path dst(strRootPath + strDst);
                     OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
 
                     auto itFoundDest = fnGetDirAccess(dst.wstring());
                     if (itFoundDest != mapAccess.end())
                     {
-                        int iRWDest = fnGetReadWriteAccess(itFoundDest);
+                        const int iRWDest = fnGetReadWriteAccess(itFoundDest);
                         if ((iRWDest & 2) == 2)
                         {
                             fs::rename(src, dst, ec);
@@ -1141,7 +1141,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             }
 
             uint64_t nNextLockToken = 1000;
-            int fd = _wopen(FN_STR((strModulePath + L"/.davlock")).c_str(), O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
+            const int fd = _wopen(FN_STR((strModulePath + L"/.davlock")).c_str(), O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
             //fstream fin(FN_STR(strModulePath + L"/.davlock"), ios::in | ios::binary);
             //if (fin.is_open() == true)
             if (fd != -1)
@@ -1157,10 +1157,10 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 param.l_len = 0; // 0 means end of the file
                 fcntl(fd, F_SETLKW, &param);
 #endif
-                unsigned long lLen = _lseek(fd, 0L, SEEK_END);
+                const unsigned long lLen = _lseek(fd, 0L, SEEK_END);
                 _lseek(fd, 0L, SEEK_SET);
 
-                unique_ptr<char[]> caBuf = make_unique<char[]>(lLen + 1);
+                const unique_ptr<char[]> caBuf = make_unique<char[]>(lLen + 1);
                 memset(caBuf.get(), 0, lLen + 1);
                 _read(fd, caBuf.get(), lLen);
 
