@@ -1,19 +1,19 @@
 [submodule "FastCgi"]
 	path = FastCgi
 	url = https://github.com/Tomenz/FastCgi
-	ignore = untracked
+	branch = master
 [submodule "SocketLib"]
 	path = SocketLib
 	url = https://github.com/Tomenz/SocketLib
-	ignore = untracked
+	branch = master
 [submodule "tinyxml2"]
 	path = tinyxml2
 	url = https://github.com/leethomason/tinyxml2.git
-	ignore = untracked
+	branch = master
 [submodule "md5"]
 	path = md5
 	url = https://github.com/jianjieluo/md5.git
-	ignore = untracked
+	branch = master
 [submodule "SrvLib"]
 	path = SrvLib
 	url = https://github.com/Tomenz/SrvLib.git

@@ -722,7 +722,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
         if (nContentSize > 0)
         {
             stringstream ss;
-            copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+            std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(ss));
 
             tinyxml2::XMLDocument xmlIn;
             xmlIn.Parse(ss.str().c_str(), ss.str().size());
@@ -865,7 +865,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 if (nContentSize > 0)
                 {
                     stringstream ss;
-                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                    std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(ss));
                     /*while (streamIn.eof() == false)
                     {
                         char caBuffer[4096];
@@ -885,7 +885,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 {   // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
                     if (strProperty == "Z:Win32CreationTime" || strProperty == "Z:Win32LastAccessTime" || strProperty == "Z:Win32LastModifiedTime")
                     {
-                        struct tm tmTime = { 0,0,0,0,0,0,0,0,0 };
+                        struct tm tmTime;
                         stringstream ss(strValue);
                         ss >> get_time(&tmTime, "%a, %d %b %Y %H:%M:%S GMT");
 
@@ -1123,7 +1123,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
             if (nContentSize > 0)
             {
                 stringstream ss;
-                copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(ss));
+                std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(ss));
                 xmlIn.Parse(ss.str().c_str(), ss.str().size());
                 XmlIterate(xmlIn.RootElement(), treeXml);
             }
