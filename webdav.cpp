@@ -811,6 +811,10 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                                     || (_wstat64(NATIV_STR(p.path()).c_str(), &stFileInfo) == 0 && stFileInfo.st_mode & S_IFDIR));
                     fnBuildRespons(element, strRef, bIsDir/*S_ISDIR(stFileInfo.st_mode)*/, vPropertys);
                 }
+                if (ec != error_code())
+                {
+                    OutputDebugStringA(std::string(ec.message()+ "\n").c_str());
+                }
             }
 
             iStatus = 207;
