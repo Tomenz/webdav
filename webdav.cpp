@@ -1442,7 +1442,7 @@ int main(int argc, const char* argv[], char **envp)
 
     if (getenv("REQUEST_METHOD") == nullptr)
     {
-        SrvPara.szSrvName = L"WebdavServ";
+        SrvPara.szSrvName = L"webdav";
 
         deque<FastCgiServer> m_vServers;
 
