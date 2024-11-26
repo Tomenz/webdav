@@ -401,7 +401,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"PATH_INFO"); }); it != end(mapEnvList))
     {
         strPath = url_decode(ws2mbs(it->second));
-        OutputDebugString(wstring(L"PATH_INFO = " + strPath + L"\r\n").c_str());
+        //OutputDebugString(wstring(L"PATH_INFO = " + strPath + L"\r\n").c_str());
     }
     if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"DOCUMENT_ROOT"); }); it != end(mapEnvList))
         strRootPath = it->second;
@@ -409,7 +409,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     {
         strRootPath = it->second;
         replace(begin(strRootPath), end(strRootPath), L'\\', L'/');
-        OutputDebugString(wstring(L"DAV_ROOT = " + strRootPath + L"\r\n").c_str());
+        //OutputDebugString(wstring(L"DAV_ROOT = " + strRootPath + L"\r\n").c_str());
     }
     if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [&](const auto& pr) { return (pr.first == L"REQUEST_URI"); }); it != end(mapEnvList))
         strRequestUri = url_decode(ws2mbs(it->second));
@@ -418,7 +418,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"HTTP_AUTHORIZATION"); }); it != end(mapEnvList))
     {
         strAuthorization = it->second;
-        OutputDebugString(wstring(L"HTTP_AUTHORIZATION = " + strAuthorization + L"\r\n").c_str());
+        //OutputDebugString(wstring(L"HTTP_AUTHORIZATION = " + strAuthorization + L"\r\n").c_str());
     }
 
     if (strPath.empty() == true)    // Kommt vor, wenn über FastCgi aufgerufen wird
@@ -426,10 +426,10 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         if (const auto& it = find_if(begin(mapEnvList), end(mapEnvList), [](const auto& pr) { return (pr.first == L"SCRIPT_FILENAME");  }); it != end(mapEnvList))
         {
             strPath = it->second/*url_decode(ConvertToByte(pr.second))*/;
-            OutputDebugString(wstring(L"SCRIPT_FILENAME = " + strPath + L"\r\n").c_str());
+            //OutputDebugString(wstring(L"SCRIPT_FILENAME = " + strPath + L"\r\n").c_str());
         }
     }
-    OutputDebugString(wstring(L"ROOT+PATH = " + strRootPath + strPath + L"\r\n").c_str());
+    //OutputDebugString(wstring(L"ROOT+PATH = " + strRootPath + strPath + L"\r\n").c_str());
 
     tuple<size_t, size_t, size_t> nDiff = FindRedirectMarker(strRequestUri, strPath);
     // Sollte die RequestURI <> dem Pfad sein ist wahrscheinlich ein Redirect Marker am Anfang
@@ -457,7 +457,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                     std::getline(fin, strLine);
                     if (strLine.empty() == false)
                     {
-                        OutputDebugStringA(std::string("fin reads: " + strLine + "\r\n").c_str());
+                        //OutputDebugStringA(std::string("fin reads: " + strLine + "\r\n").c_str());
                         if (isspace(strLine[0]) == false)
                         {
                             bool bExcluded = false;
@@ -569,7 +569,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
         if (strAuthorization.substr(0, nPosSpace) == L"Basic")
         {
             strCredential = Base64::Decode(ws2mbs(strAuthorization.substr(nPosSpace + 1)));
-            OutputDebugStringA(string("UserName&Password = " + strCredential + "\r\n").c_str());
+            //OutputDebugStringA(string("UserName&Password = " + strCredential + "\r\n").c_str());
 
             const size_t nPos = strCredential.find(":");
             std::transform(begin(strCredential), begin(strCredential) + nPos, begin(strCredential), [](char c) noexcept { return static_cast<char>(::tolower(c)); });
@@ -587,7 +587,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
                     iRet = 1;
                 if (get<2>(itTpCred) == "w" || get<2>(itTpCred) == "rw" || get<2>(itTpCred) == "wr")
                     iRet |= 2;
-                OutputDebugString(wstring(L"ZUGRISSRECHTE: PFAD = " + iMapAccess->first + L", USER = " + wstring(begin(strCredential), end(strCredential)) + L", RECHTE = " + to_wstring(iRet) + L"\r\n").c_str());
+                //OutputDebugString(wstring(L"ZUGRISSRECHTE: PFAD = " + iMapAccess->first + L", USER = " + wstring(begin(strCredential), end(strCredential)) + L", RECHTE = " + to_wstring(iRet) + L"\r\n").c_str());
                 break;
             }
         }
@@ -715,7 +715,7 @@ int DoAction(const wstring& strModulePath, const map<wstring, wstring>& mapEnvLi
     // https://msdn.microsoft.com/en-us/library/ms991960(v=exchg.65).aspx
     // https://msdn.microsoft.com/en-us/library/jj594347(v=office.12).aspx
     tree<string, string> treeXml;
-OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second) + L") -> " + strRootPath + L"|" + strPath + L"\r\n").c_str());
+//OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second) + L") -> " + strRootPath + L"|" + strPath + L"\r\n").c_str());
     switch (itMethode->second)
     {
     case 0: // PROPFIND
@@ -1047,7 +1047,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
 
                     //fs::path dst(regex_replace(wstring(strRootPath + url_decode(ConvertToByte(pr.second.substr(nPos + strHost.size())))), wregex(strReqOffstr), L"", regex_constants::format_first_only));
                     const fs::path dst(strRootPath + strDst);
-                    OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
+                    //OutputDebugString(wstring(L"move from: " + src.wstring() + L" to: " + dst.wstring() + L"\r\n").c_str());
 
                     auto itFoundDest = fnGetDirAccess(dst.wstring());
                     if (itFoundDest != mapAccess.end())
@@ -1265,7 +1265,7 @@ OutputDebugString(wstring(itMethode->first + L"(" + to_wstring(itMethode->second
                 if (nContentSize > 0)
                 {
                     //while (streamIn.eof() == false)
-                    copy(istreambuf_iterator<char>(streamIn), istreambuf_iterator<char>(), ostreambuf_iterator<char>(fout));
+                    std::copy_n(istreambuf_iterator<char>(streamIn), nContentSize, ostreambuf_iterator<char>(fout));
                 }
 
                 fout.close();
