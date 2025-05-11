@@ -12,7 +12,7 @@
 	branch = master
 [submodule "md5"]
 	path = md5
-	url = https://github.com/jianjieluo/md5.git
+	url = https://github.com/Tomenz/md5.git
 	branch = master
 [submodule "SrvLib"]
 	path = SrvLib
